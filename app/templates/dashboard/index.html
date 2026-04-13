@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero">
+  <h1>{{ t('hero.title') }}</h1>
+  <p>{{ t('hero.subtitle') }}</p>
+</section>
+
+{% if notice_key %}
+<section class="panel notice">
+  {{ t(notice_key) }}
+</section>
+{% endif %}
+
+<!-- ORT Status Section -->
+<section class="panel">
+  <h2>{{ t('dashboard.ort_status') }}</h2>
+  {% if ort_path %}
+    <div class="alert-success">
+      <strong>{{ t('dashboard.ort_installed') }}</strong><br/>
+      <code>{{ ort_path }}</code>
+    </div>
+  {% else %}
+    <div class="alert-warning">
+      <strong>{{ t('dashboard.ort_not_installed') }}</strong><br/>
+      {{ t('dashboard.ort_install_prompt') }}
+    </div>
+  {% endif %}
+  
+  <form method="post" action="/jobs/install-ort" class="inline-form" style="margin-top:12px;">
+    <input type="hidden" name="language" value="{{ lang }}" />
+    <label>{{ t('dashboard.install_dir') }}</label>
+    <div class="row-input">
+      <input id="installDir" name="install_dir" placeholder="{{ t('dashboard.install_dir_placeholder') }}" />
+      <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">
+        {{ t('dashboard.pick_folder_btn') }}
+      </button>
+    </div>
+    <button type="submit">{{ t('dashboard.install_ort_btn') }}</button>
+  </form>
+</section>
+
+<!-- Project Analysis Section -->
+{% if ort_path %}
+<section class="panel">
+  <h2>{{ t('dashboard.project_analysis') }}</h2>
+  <p>{{ t('dashboard.project_analysis_help') }}</p>
+  
+  <form method="post" action="/jobs/analyze-project" id="projectForm">
+    <input type="hidden" name="ui_language" value="{{ lang }}" />
+    
+    <label>{{ t('dashboard.project_path') }}</label>
+    <div class="row-input">
+      <input type="text" name="project_path" id="projectPath" value="{{ default_workdir }}" required readonly style="flex: 1;" />
+      <button type="button" onclick="pickProjectDirectory()" class="btn-secondary">
+        {{ t('dashboard.pick_folder_btn') }}
+      </button>
+    </div>
+    
+    <label>{{ t('dashboard.language_select') }}</label>
+    <div class="row-input">
+      <select name="language" id="languageSelect" style="flex: 1;">
+        <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
+        {% for opt in language_options %}
+          <option value="{{ opt.value }}">{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" onclick="detectLanguage()" class="btn-secondary">
+        {{ t('dashboard.detect_btn') }}
+      </button>
+    </div>
+    
+    <!-- Recommended managers info (populated by detectLanguage JS) -->
+    <div id="recommendedManagers" style="display:none; padding:8px 12px; background:var(--accent-light); border:1px solid #bfdbfe; border-radius:var(--radius); font-size:13px; color:#1e40af;">
+      <strong>{{ t('dashboard.recommended_managers') }}:</strong>
+      <span id="recommendedManagersList"></span>
+    </div>
+
+    <!-- Config status -->
+    <div style="padding:8px 12px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary);">
+      {% if config_yml_content %}
+        <span style="color:var(--success);">{{ t('dashboard.config_ready') }}: <code>{{ config_yml_path }}</code></span>
+      {% else %}
+        {{ t('dashboard.config_not_ready') }}
+      {% endif %}
+      <br/>{{ t('dashboard.auto_config_note') }}
+    </div>
+
+    <label>{{ t('dashboard.command_select') }}</label>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:6px;">
+      <button type="submit" name="command" value="analyze" class="btn-primary">
+        {{ t('dashboard.cmd_analyze') }}
+      </button>
+      <button type="submit" name="command" value="scan" class="btn-primary">
+        {{ t('dashboard.cmd_scan') }}
+      </button>
+      <button type="submit" name="command" value="evaluate" class="btn-primary">
+        {{ t('dashboard.cmd_evaluate') }}
+      </button>
+      <button type="submit" name="command" value="advise" class="btn-primary">
+        {{ t('dashboard.cmd_advise') }}
+      </button>
+      <button type="submit" name="command" value="report" class="btn-primary">
+        {{ t('dashboard.cmd_report') }}
+      </button>
+    </div>
+  </form>
+  
+  <script>
+    async function pickDirectoryInto(targetInputId) {
+      try {
+        const response = await fetch('/api/pick-directory');
+        const data = await response.json();
+        if (data.selected) {
+          document.getElementById(targetInputId).value = data.selected;
+          return;
+        }
+        alert('{{ t("dashboard.error_pick_folder") }}');
+      } catch (err) {
+        console.error(err);
+        alert('{{ t("dashboard.error_pick_folder") }}');
+      }
+    }
+
+    async function pickInstallDirectory() {
+      await pickDirectoryInto('installDir');
+    }
+
+    async function pickProjectDirectory() {
+      await pickDirectoryInto('projectPath');
+    }
+
+    async function detectLanguage() {
+      const projectPath = document.getElementById('projectPath').value;
+      const languageSelect = document.getElementById('languageSelect');
+      
+      if (!projectPath) {
+        alert('{{ t("dashboard.error_no_path") }}');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/detect-language', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_path: projectPath })
+        });
+        const data = await response.json();
+        
+        if (data.detected) {
+          languageSelect.value = data.detected;
+          // Show recommended package managers
+          const mgrsBox = document.getElementById('recommendedManagers');
+          const mgrsList = document.getElementById('recommendedManagersList');
+          if (data.recommended_managers && data.recommended_managers.length > 0) {
+            mgrsList.textContent = data.recommended_managers.join(', ');
+            mgrsBox.style.display = 'block';
+          } else {
+            mgrsBox.style.display = 'none';
+          }
+        } else {
+          alert('{{ t("dashboard.error_detect") }}');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('{{ t("dashboard.error_detect") }}');
+      }
+    }
+  </script>
+</section>
+{% endif %}
+
+<!-- Recent Jobs Section -->
+<section class="panel">
+  <h2>{{ t('dashboard.recent_jobs') }}</h2>
+  <form id="jobs-filter-form" class="jobs-filter" onsubmit="return false;">
+    <input id="jobs-filter-q" name="q" placeholder="{{ t('dashboard.jobs_filter_placeholder') }}" />
+    <select id="jobs-filter-status" name="status">
+      <option value="all">{{ t('dashboard.jobs_filter_all') }}</option>
+      <option value="pending">{{ t('status.pending') }}</option>
+      <option value="running">{{ t('status.running') }}</option>
+      <option value="success">{{ t('status.success') }}</option>
+      <option value="failed">{{ t('status.failed') }}</option>
+      <option value="cancelled">{{ t('status.cancelled') }}</option>
+    </select>
+  </form>
+  <div
+    id="jobs-container"
+    hx-get="/partials/jobs?lang={{ lang }}"
+    hx-include="#jobs-filter-form"
+    hx-trigger="load, refresh-jobs, every 4s [!window.__pauseJobsPolling], keyup changed delay:300ms from:#jobs-filter-form, change from:#jobs-filter-form"
+    hx-swap="innerHTML"
+  ></div>
+
+  <script>
+    (function () {
+      window.__pauseJobsPolling = window.__pauseJobsPolling || false;
+      window.__jobsExpandedIds = window.__jobsExpandedIds || [];
+      window.__jobsScrollTop = window.__jobsScrollTop || 0;
+      window.__jobStatusStreams = window.__jobStatusStreams || {};
+      window.__lastRealtimeRefreshAt = window.__lastRealtimeRefreshAt || 0;
+
+      function triggerRealtimeRefresh() {
+        const now = Date.now();
+        if (now - window.__lastRealtimeRefreshAt < 800) {
+          return;
+        }
+        window.__lastRealtimeRefreshAt = now;
+        const root = document.getElementById('jobs-container');
+        if (root) {
+          htmx.trigger(root, 'refresh-jobs');
+        }
+      }
+
+      function syncJobStatusStreams(root) {
+        const rows = root.querySelectorAll('tr[data-job-id][data-job-status]');
+        const activeIds = new Set();
+
+        rows.forEach(function (row) {
+          const jobId = row.getAttribute('data-job-id');
+          const status = row.getAttribute('data-job-status');
+          if (!jobId) {
+            return;
+          }
+
+          activeIds.add(jobId);
+          if (!['pending', 'running'].includes(status || '')) {
+            return;
+          }
+
+          if (window.__jobStatusStreams[jobId]) {
+            return;
+          }
+
+          const stream = new EventSource('/jobs/' + jobId + '/events');
+          stream.addEventListener('status', function () {
+            triggerRealtimeRefresh();
+          });
+          stream.onerror = function () {
+            try {
+              stream.close();
+            } catch (_) {}
+            delete window.__jobStatusStreams[jobId];
+          };
+
+          window.__jobStatusStreams[jobId] = stream;
+        });
+
+        Object.keys(window.__jobStatusStreams).forEach(function (jobId) {
+          if (!activeIds.has(jobId)) {
+            try {
+              window.__jobStatusStreams[jobId].close();
+            } catch (_) {}
+            delete window.__jobStatusStreams[jobId];
+          }
+        });
+      }
+
+      function updatePollingStateFromOpenDetails(root) {
+        const opened = root.querySelectorAll('details.job-expand-details[open]');
+        window.__pauseJobsPolling = opened.length > 0;
+      }
+
+      document.body.addEventListener('toggle', function (event) {
+        const target = event.target;
+        if (!target.matches || !target.matches('details.job-expand-details')) {
+          return;
+        }
+
+        const root = document.getElementById('jobs-container');
+        if (!root) {
+          return;
+        }
+
+        const opened = root.querySelectorAll('details.job-expand-details[open]');
+        window.__jobsExpandedIds = Array.from(opened)
+          .map((d) => d.getAttribute('data-job-id'))
+          .filter(Boolean);
+        updatePollingStateFromOpenDetails(root);
+      });
+
+      document.body.addEventListener('htmx:beforeRequest', function (event) {
+        const elt = event.detail && event.detail.elt;
+        if (!elt || elt.id !== 'jobs-container') {
+          return;
+        }
+
+        const root = document.getElementById('jobs-container');
+        if (!root) {
+          return;
+        }
+
+        const wrapper = root.querySelector('.jobs-table-wrapper');
+        window.__jobsScrollTop = wrapper ? wrapper.scrollTop : 0;
+
+        const opened = root.querySelectorAll('details.job-expand-details[open]');
+        window.__jobsExpandedIds = Array.from(opened)
+          .map((d) => d.getAttribute('data-job-id'))
+          .filter(Boolean);
+      });
+
+      document.body.addEventListener('htmx:afterSwap', function (event) {
+        const elt = event.detail && event.detail.elt;
+        if (!elt || elt.id !== 'jobs-container') {
+          return;
+        }
+
+        const root = document.getElementById('jobs-container');
+        if (!root) {
+          return;
+        }
+
+        (window.__jobsExpandedIds || []).forEach(function (jobId) {
+          const detail = root.querySelector('details.job-expand-details[data-job-id="' + jobId + '"]');
+          if (detail) {
+            detail.open = true;
+          }
+        });
+
+        const wrapper = root.querySelector('.jobs-table-wrapper');
+        if (wrapper && typeof window.__jobsScrollTop === 'number') {
+          wrapper.scrollTop = window.__jobsScrollTop;
+        }
+
+        updatePollingStateFromOpenDetails(root);
+        syncJobStatusStreams(root);
+      });
+
+      document.body.addEventListener('htmx:load', function (event) {
+        const root = document.getElementById('jobs-container');
+        if (!root) {
+          return;
+        }
+        if (event.target && (event.target.id === 'jobs-container' || root.contains(event.target))) {
+          syncJobStatusStreams(root);
+        }
+      });
+    })();
+  </script>
+</section>
+{% endblock %}
+

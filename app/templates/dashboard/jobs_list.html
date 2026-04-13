@@ -1,0 +1,57 @@
+{% if jobs %}
+<div class="jobs-table-wrapper">
+  <table class="jobs-table jobs-table-compact">
+    <thead>
+      <tr>
+        <th>{{ t('dashboard.jobs_col_name') if t('dashboard.jobs_col_name') != 'dashboard.jobs_col_name' else 'Name' }}</th>
+        <th>{{ t('dashboard.jobs_col_status') if t('dashboard.jobs_col_status') != 'dashboard.jobs_col_status' else 'Status' }}</th>
+        <th>{{ t('dashboard.jobs_col_created') if t('dashboard.jobs_col_created') != 'dashboard.jobs_col_created' else 'Created' }}</th>
+        <th>{{ t('dashboard.jobs_col_actions') if t('dashboard.jobs_col_actions') != 'dashboard.jobs_col_actions' else 'Actions' }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr class="status-row-{{ job.status.value }}" data-job-id="{{ job.job_id }}" data-job-status="{{ job.status.value }}">
+        <td>
+          <div class="job-main-name">{{ job.name }}</div>
+          {% if job.project_path %}
+          <div class="job-sub mono">{{ job.project_path }}</div>
+          {% endif %}
+        </td>
+        <td><span class="status-pill status-pill-{{ job.status.value }}">{{ status_map[job.status.value] }}</span></td>
+        <td class="mono">{{ fmt_dt(job.created_at) }}</td>
+        <td class="actions-cell">
+          <a href="/jobs/{{ job.job_id }}">{{ t('dashboard.view_details_btn') }}</a>
+          {% if job.status.value == 'success' %}
+          <a href="/results/?lang={{ lang }}">{{ t('dashboard.view_results_btn') if t('dashboard.view_results_btn') != 'dashboard.view_results_btn' else 'Results' }}</a>
+          <form method="post" action="/jobs/{{ job.job_id }}/open-log" class="inline-open-form">
+            <button type="submit" class="btn-secondary btn-sm">{{ t('dashboard.open_file_btn') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      <tr class="job-expand-row">
+        <td colspan="4">
+          <details class="job-expand-details" data-job-id="{{ job.job_id }}">
+            <summary>{{ t('dashboard.show_more') if t('dashboard.show_more') != 'dashboard.show_more' else 'Show details' }}</summary>
+            <div class="job-expand-content">
+              <div><strong>{{ t('dashboard.jobs_col_language') if t('dashboard.jobs_col_language') != 'dashboard.jobs_col_language' else 'Language' }}:</strong> {{ job.detected_language or '-' }}</div>
+              <div><strong>{{ t('dashboard.jobs_col_reason') if t('dashboard.jobs_col_reason') != 'dashboard.jobs_col_reason' else 'Fail reason' }}:</strong> <span class="reason-cell-inline">{{ job.error_message or '-' }}</span></div>
+              <div>
+                <strong>{{ t('dashboard.jobs_col_command') if t('dashboard.jobs_col_command') != 'dashboard.jobs_col_command' else 'Command' }}:</strong>
+                <details class="command-details">
+                  <summary class="mono">{{ (job.command[:72] ~ '...') if (job.command|length > 72) else job.command }}</summary>
+                  <div class="mono command-full">{{ job.command }}</div>
+                </details>
+              </div>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p>{{ t('dashboard.jobs_empty') }}</p>
+{% endif %}

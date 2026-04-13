@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero compact">
+  <h1>Supporting Commands</h1>
+  <p>Operational and ecosystem commands around the ORT pipeline.</p>
+</section>
+
+<section class="cards-grid">
+  {% for cmd in commands %}
+  <article class="info-card">
+    <h3>{{ cmd.id }}</h3>
+    <p>{{ cmd.purpose }}</p>
+    <p class="mono">{{ cmd.sample }}</p>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

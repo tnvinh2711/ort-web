@@ -1,0 +1,29 @@
+[project]
+name = "ort-web-visualizer"
+version = "0.1.0"
+description = "Local ORT toolkit visualizer with FastAPI + HTMX"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "jinja2>=3.1.4",
+  "python-multipart>=0.0.20",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "httpx>=0.28.0",
+]
+
+[tool.uvicorn]
+factory = false
+host = "127.0.0.1"
+port = 8000
+reload = true
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

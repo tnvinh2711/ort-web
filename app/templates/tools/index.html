@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero compact">
+  <h1>Core ORT Tools</h1>
+  <p>Analyzer / Downloader / Scanner / Advisor / Evaluator / Reporter / Notifier</p>
+</section>
+
+<section class="cards-grid">
+  {% for tool in tools %}
+  <article class="info-card">
+    <h3>{{ tool.title }}</h3>
+    <p>{{ tool.purpose }}</p>
+    <p class="mono">{{ tool.sample }}</p>
+    <ul>
+      {% for output in tool.output %}
+      <li>{{ output }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

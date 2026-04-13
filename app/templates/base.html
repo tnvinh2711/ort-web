@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ t('app.title') }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <script defer src="/static/js/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-left">
+      <a class="brand" href="/?lang={{ lang }}">
+        <span class="brand-icon">&#9670;</span>
+        ORT Web
+      </a>
+      <span class="header-sep"></span>
+      <nav>
+        <a href="/?lang={{ lang }}" class="nav-link{% if request.url.path == '/' %} active{% endif %}">{{ t('nav.dashboard') }}</a>
+        <a href="/setup/?lang={{ lang }}" class="nav-link{% if '/setup' in request.url.path %} active{% endif %}">{{ t('nav.setup') }}</a>
+        <a href="/results/?lang={{ lang }}" class="nav-link{% if '/results' in request.url.path %} active{% endif %}">{{ t('nav.results') }}</a>
+        <a href="/tools/?lang={{ lang }}" class="nav-link{% if '/tools' in request.url.path %} active{% endif %}">{{ t('nav.tools') }}</a>
+        <a href="/plugins/?lang={{ lang }}" class="nav-link{% if '/plugins' in request.url.path %} active{% endif %}">{{ t('nav.plugins') }}</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <div class="lang-switch">
+        <a href="{{ request.url.path }}?lang=vi" class="lang-btn{% if lang == 'vi' %} lang-active{% endif %}">VI</a>
+        <a href="{{ request.url.path }}?lang=en" class="lang-btn{% if lang == 'en' %} lang-active{% endif %}">EN</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

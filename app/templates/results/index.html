@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero compact">
+  <h1>{{ t('results.title') if t('results.title') != 'results.title' else 'Results and Configuration Ecosystem' }}</h1>
+  <p>{{ t('results.subtitle') if t('results.subtitle') != 'results.subtitle' else 'Track artifacts, configuration dependencies, and related ORT tools.' }}</p>
+</section>
+
+<section class="panel">
+  <h2>{{ t('results.generated_files') if t('results.generated_files') != 'results.generated_files' else 'Generated Result Files' }}</h2>
+  <p class="result-scope-note">
+    {% if latest_run_dir and not show_all %}
+      {{ t('results.showing_latest') if t('results.showing_latest') != 'results.showing_latest' else 'Showing latest run:' }}
+      <strong class="mono">{{ latest_run_dir }}</strong>
+      <a href="/results/?lang={{ lang }}&scope=all">{{ t('results.show_all') if t('results.show_all') != 'results.show_all' else 'Show all files' }}</a>
+    {% elif show_all %}
+      {{ t('results.showing_all') if t('results.showing_all') != 'results.showing_all' else 'Showing all artifact files.' }}
+      {% if latest_run_dir %}
+      <a href="/results/?lang={{ lang }}">{{ t('results.show_latest') if t('results.show_latest') != 'results.show_latest' else 'Show latest run only' }}</a>
+      {% endif %}
+    {% endif %}
+  </p>
+  {% if artifact_files %}
+  <div class="jobs-table-wrapper">
+    <table class="jobs-table jobs-table-compact">
+      <thead>
+        <tr>
+          <th>{{ t('results.file') if t('results.file') != 'results.file' else 'File' }}</th>
+          <th>{{ t('results.size') if t('results.size') != 'results.size' else 'Size' }}</th>
+          <th>{{ t('results.actions') if t('results.actions') != 'results.actions' else 'Actions' }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for file in artifact_files %}
+        <tr>
+          <td class="mono">{{ file.path }}</td>
+          <td>{{ file.size }} bytes</td>
+          <td>
+            {% if file.is_html or file.is_text %}
+            <a href="/results/render?path={{ file.path }}" target="_blank">{{ t('results.visualize') if t('results.visualize') != 'results.visualize' else 'Visualize' }}</a>
+            {% endif %}
+            <a href="/results/download?path={{ file.path }}">{{ t('results.download') if t('results.download') != 'results.download' else 'Download' }}</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>{{ t('results.no_files') if t('results.no_files') != 'results.no_files' else 'No files found in runtime/artifacts yet. Run Analyze/Scan/Report first.' }}</p>
+  {% endif %}
+</section>
+
+<section class="cards-grid">
+  <article class="info-card">
+    <h3>Config Artifacts</h3>
+    <table class="data-table">
+      <thead>
+        <tr><th>Artifact</th><th>Scope</th><th>Used by</th></tr>
+      </thead>
+      <tbody>
+      {% for item in config_artifacts %}
+        <tr>
+          <td class="mono">{{ item.name }}</td>
+          <td>{{ item.scope }}</td>
+          <td>{{ ', '.join(item.used_by) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </article>
+
+  <article class="info-card">
+    <h3>Related Tools</h3>
+    <ul>
+    {% for tool in related_tools %}
+      <li><strong>{{ tool.name }}</strong> - {{ tool.role }}</li>
+    {% endfor %}
+    </ul>
+  </article>
+</section>
+{% endblock %}

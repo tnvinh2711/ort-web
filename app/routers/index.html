@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rút Link Shopee Thuy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .shopee-orange { color: #ee4d2d; }
+        .card { box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4); }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen py-12 px-4">
+    <div class="max-w-2xl mx-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-center gap-3 mb-10">
+            <div class="w-12 h-12 bg-[#ee4d2d] rounded-2xl flex items-center justify-center text-3xl shadow-lg">
+                🛒
+            </div>
+            <h1 class="text-4xl font-bold tracking-tight">
+                Rút Link Shopee <span class="shopee-orange">Thuy</span>
+            </h1>
+        </div>
+
+        <div class="bg-zinc-900 rounded-3xl card p-8 border border-zinc-800">
+            <div class="space-y-6">
+                <!-- Sub ID -->
+                <div>
+                    <label class="text-sm text-zinc-400 mb-2 block">Sub ID <span class="text-zinc-500">(dùng để theo dõi nguồn)</span></label>
+                    <div class="bg-zinc-800 px-5 py-4 rounded-2xl flex items-center gap-3">
+                        <i class="fas fa-tag text-[#ee4d2d]"></i>
+                        <input type="text" id="sub_id" value="facebook" 
+                               class="bg-transparent outline-none flex-1 text-lg font-medium">
+                    </div>
+                    <p class="text-xs text-zinc-400 mt-2">
+                        Ví dụ: facebook, tiktok, group1, instagram, youtube...
+                    </p>
+                </div>
+
+                <!-- Link input -->
+                <div>
+                    <label class="text-sm text-zinc-400 mb-2 block">Dán link Shopee vào đây</label>
+                    <div class="relative">
+                        <input type="text" id="link_input" 
+                               placeholder="https://s.shopee.vn/... hoặc link dài"
+                               class="w-full bg-zinc-800 text-white px-6 py-5 rounded-2xl text-lg outline-none focus:ring-2 focus:ring-[#ee4d2d] transition-all">
+                        <button onclick="pasteLink()" 
+                                class="absolute right-4 top-1/2 -translate-y-1/2 bg-[#ee4d2d] hover:bg-orange-600 px-6 py-2 rounded-xl text-sm font-medium transition-all">
+                            📋 Paste
+                        </button>
+                    </div>
+                </div>
+
+                <button onclick="convertLink()" 
+                        class="w-full bg-[#ee4d2d] hover:bg-orange-600 text-white font-semibold text-xl py-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-3">
+                    <i class="fas fa-magic"></i>
+                    CHUYỂN ĐỔI LINK
+                </button>
+            </div>
+
+            <!-- Result -->
+            <div id="result_section" class="hidden mt-8">
+                <div class="bg-zinc-950 border border-zinc-700 rounded-2xl p-6">
+                    <p class="text-emerald-400 text-sm font-medium mb-2 flex items-center gap-2">
+                        <i class="fas fa-check-circle"></i>
+                        LINK AFFILIATE ĐÃ SẴN SÀNG
+                    </p>
+                    <div id="result_link" class="bg-zinc-900 p-5 rounded-xl text-sm break-all font-mono leading-relaxed"></div>
+                    
+                    <button onclick="copyLink()" 
+                            class="mt-5 w-full bg-emerald-500 hover:bg-emerald-600 py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all">
+                        <i class="fas fa-copy"></i>
+                        SAO CHÉP LINK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const AFF_ID = "17372520347";
+
+    function pasteLink() {
+        navigator.clipboard.readText().then(text => {
+            document.getElementById('link_input').value = text.trim();
+        });
+    }
+
+    function convertLink() {
+        let originalLink = document.getElementById('link_input').value.trim();
+        if (!originalLink) {
+            alert("Vui lòng dán link Shopee trước!");
+            return;
+        }
+
+        const encoded = encodeURIComponent(originalLink);
+        const subId = document.getElementById('sub_id').value.trim() || "facebook";
+
+        const affLink = `https://s.shopee.vn/an_redir?origin_link=${encoded}&affiliate_id=${AFF_ID}&sub_id=${subId}`;
+
+        document.getElementById('result_link').innerHTML = affLink;
+        document.getElementById('result_section').classList.remove('hidden');
+    }
+
+    function copyLink() {
+        const text = document.getElementById('result_link').innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            alert("✅ Đã copy link Affiliate!");
+        });
+    }
+</script>
+</body>
+</html>
