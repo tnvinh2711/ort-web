@@ -54,7 +54,7 @@ source .venv/bin/activate  # macOS/Linux
 ### 3. Install dependencies
 
 ```bash
-pip3 install -e .
+pip3 install .
 ```
 
 For Python project analysis support (ORT's PIP analyzer):
@@ -62,6 +62,8 @@ For Python project analysis support (ORT's PIP analyzer):
 ```bash
 pip3 install python-inspector setuptools
 ```
+
+> **Note:** If you want editable/development mode, use `pip3 install -e ".[dev]"` (requires pip 23+).
 
 ### 4. Run the app
 
