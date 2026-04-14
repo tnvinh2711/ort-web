@@ -8,8 +8,10 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.core.ort_registry import CONFIG_ARTIFACTS, RELATED_TOOLS
 from app.i18n import translate
+
+# Files to hide from the results listing.
+_HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
 
 router = APIRouter(prefix="/results", tags=["results"])
 templates = Jinja2Templates(directory="app/templates")
@@ -43,7 +45,7 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
     if not search_root.exists() or not search_root.is_dir():
         return []
 
-    files: list[Path] = [p for p in search_root.rglob("*") if p.is_file()]
+    files: list[Path] = [p for p in search_root.rglob("*") if p.is_file() and p.name not in _HIDDEN_FILENAMES]
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     result: list[dict[str, str | int | bool]] = []
 
@@ -97,8 +99,6 @@ def results_page(request: Request) -> HTMLResponse:
             "request": request,
             "lang": lang,
             "t": lambda key: translate(lang, key),
-            "config_artifacts": CONFIG_ARTIFACTS,
-            "related_tools": RELATED_TOOLS,
             "artifact_files": artifact_files,
             "latest_run_dir": latest_run_dir,
             "show_all": show_all,

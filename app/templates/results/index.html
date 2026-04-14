@@ -46,36 +46,7 @@
     </table>
   </div>
   {% else %}
-  <p>{{ t('results.no_files') if t('results.no_files') != 'results.no_files' else 'No files found in runtime/artifacts yet. Run Analyze/Scan/Report first.' }}</p>
+  <p>{{ t('results.no_files') if t('results.no_files') != 'results.no_files' else 'No files found in runtime/artifacts yet. Run Analyze first.' }}</p>
   {% endif %}
-</section>
-
-<section class="cards-grid">
-  <article class="info-card">
-    <h3>Config Artifacts</h3>
-    <table class="data-table">
-      <thead>
-        <tr><th>Artifact</th><th>Scope</th><th>Used by</th></tr>
-      </thead>
-      <tbody>
-      {% for item in config_artifacts %}
-        <tr>
-          <td class="mono">{{ item.name }}</td>
-          <td>{{ item.scope }}</td>
-          <td>{{ ', '.join(item.used_by) }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </article>
-
-  <article class="info-card">
-    <h3>Related Tools</h3>
-    <ul>
-    {% for tool in related_tools %}
-      <li><strong>{{ tool.name }}</strong> - {{ tool.role }}</li>
-    {% endfor %}
-    </ul>
-  </article>
 </section>
 {% endblock %}
