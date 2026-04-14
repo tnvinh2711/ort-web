@@ -47,43 +47,47 @@
   
   <form method="post" action="/jobs/analyze-project" id="projectForm">
     <input type="hidden" name="ui_language" value="{{ lang }}" />
-    
+    <input type="hidden" name="command" value="analyze" />
+
     <label>{{ t('dashboard.project_path') }}</label>
     <div class="row-input">
-      <input type="text" name="project_path" id="projectPath" value="{{ default_workdir }}" required readonly style="flex: 1;" />
+      <input type="text" name="project_path" id="projectPath" value="" placeholder="{{ t('dashboard.project_path') }}..." required readonly style="flex:1;" />
       <button type="button" onclick="pickProjectDirectory()" class="btn-secondary">
         {{ t('dashboard.pick_folder_btn') }}
       </button>
     </div>
 
-    <label>{{ t('dashboard.language_select') }}</label>
-    <select name="language" id="languageSelect">
-      <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
-      {% for opt in language_options %}
-        <option value="{{ opt.value }}">{{ opt.label }}</option>
-      {% endfor %}
-    </select>
-    
-    <!-- Recommended managers info (populated by detectLanguage JS) -->
-    <div id="recommendedManagers" style="display:none; padding:8px 12px; background:var(--accent-light); border:1px solid #bfdbfe; border-radius:var(--radius); font-size:13px; color:#1e40af;">
-      <strong>{{ t('dashboard.recommended_managers') }}:</strong>
-      <span id="recommendedManagersList"></span>
-    </div>
+    <!-- Analyzer options — hidden until a folder is selected -->
+    <div id="analyzerOptions" style="display:none;">
+      <label>{{ t('dashboard.language_select') }}</label>
+      <div class="row-input">
+        <select name="language" id="languageSelect" style="flex:1;">
+          <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
+          {% for opt in language_options %}
+            <option value="{{ opt.value }}">{{ opt.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-primary">
+          {{ t('dashboard.cmd_analyze') }}
+        </button>
+      </div>
 
-    <!-- Config status -->
-    <div style="padding:8px 12px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary);">
-      {% if config_yml_content %}
-        <span style="color:var(--success);">{{ t('dashboard.config_ready') }}: <code>{{ config_yml_path }}</code></span>
-      {% else %}
-        {{ t('dashboard.config_not_ready') }}
-      {% endif %}
-      <br/>{{ t('dashboard.auto_config_note') }}
-    </div>
+      <!-- Recommended managers info (populated by detectLanguage JS) -->
+      <div id="recommendedManagers" style="display:none; padding:8px 12px; background:var(--accent-light); border:1px solid #bfdbfe; border-radius:var(--radius); font-size:13px; color:#1e40af; margin-top:8px;">
+        <strong>{{ t('dashboard.recommended_managers') }}:</strong>
+        <span id="recommendedManagersList"></span>
+      </div>
 
-    <input type="hidden" name="command" value="analyze" />
-    <button type="submit" class="btn-primary" style="margin-top:4px;">
-      {{ t('dashboard.cmd_analyze') }}
-    </button>
+      <!-- Config status -->
+      <div style="padding:8px 12px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary); margin-top:8px;">
+        {% if config_yml_content %}
+          <span style="color:var(--success);">{{ t('dashboard.config_ready') }}: <code>{{ config_yml_path }}</code></span>
+        {% else %}
+          {{ t('dashboard.config_not_ready') }}
+        {% endif %}
+        <br/>{{ t('dashboard.auto_config_note') }}
+      </div>
+    </div>
   </form>
   
   <script>
@@ -108,7 +112,11 @@
 
     async function pickProjectDirectory() {
       await pickDirectoryInto('projectPath');
-      await detectLanguage();
+      var path = document.getElementById('projectPath').value;
+      if (path) {
+        document.getElementById('analyzerOptions').style.display = '';
+        await detectLanguage();
+      }
     }
 
     async function detectLanguage() {
