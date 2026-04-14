@@ -55,19 +55,14 @@
         {{ t('dashboard.pick_folder_btn') }}
       </button>
     </div>
-    
+
     <label>{{ t('dashboard.language_select') }}</label>
-    <div class="row-input">
-      <select name="language" id="languageSelect" style="flex: 1;">
-        <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
-        {% for opt in language_options %}
-          <option value="{{ opt.value }}">{{ opt.label }}</option>
-        {% endfor %}
-      </select>
-      <button type="button" onclick="detectLanguage()" class="btn-secondary">
-        {{ t('dashboard.detect_btn') }}
-      </button>
-    </div>
+    <select name="language" id="languageSelect">
+      <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
+      {% for opt in language_options %}
+        <option value="{{ opt.value }}">{{ opt.label }}</option>
+      {% endfor %}
+    </select>
     
     <!-- Recommended managers info (populated by detectLanguage JS) -->
     <div id="recommendedManagers" style="display:none; padding:8px 12px; background:var(--accent-light); border:1px solid #bfdbfe; border-radius:var(--radius); font-size:13px; color:#1e40af;">
@@ -113,6 +108,7 @@
 
     async function pickProjectDirectory() {
       await pickDirectoryInto('projectPath');
+      await detectLanguage();
     }
 
     async function detectLanguage() {

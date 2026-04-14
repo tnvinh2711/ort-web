@@ -39,7 +39,9 @@
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
       "Bash(gh repo:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/?lang=vi)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://127.0.0.1:8000/?lang=vi\")"
     ]
   }
 }
