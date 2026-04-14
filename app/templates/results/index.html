@@ -101,6 +101,23 @@
       document.getElementById('jobs-filter-page').value = p;
       htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
     }
+
+    // Auto-refresh when there are running/pending jobs
+    var _pollTimer = null;
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target.id !== 'jobs-container') return;
+      var hasRunning = evt.detail.target.querySelectorAll(
+        '[data-job-status="running"], [data-job-status="pending"]'
+      ).length > 0;
+      if (hasRunning && !_pollTimer) {
+        _pollTimer = setInterval(function() {
+          htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+        }, 5000);
+      } else if (!hasRunning && _pollTimer) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+      }
+    });
   </script>
 </section>
 {% endblock %}

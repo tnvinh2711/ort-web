@@ -97,6 +97,7 @@
       }
       if (status === 'success' || status === 'failed' || status === 'cancelled') {
         src.close();
+        localStorage.removeItem('ort_active_job');
         if (progress) progress.style.display = 'none';
         var logDetails = document.getElementById('job-log-details');
         if (logDetails) logDetails.removeAttribute('open');

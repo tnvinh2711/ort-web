@@ -132,6 +132,33 @@
 <div id="job-panel-container"></div>
 
 <script>
+  async function loadJobPanel(jobId, scroll) {
+    var container = document.getElementById('job-panel-container');
+    if (!container) return;
+    try {
+      var resp = await fetch('/jobs/' + jobId + '/panel?lang={{ lang }}');
+      if (!resp.ok) { localStorage.removeItem('ort_active_job'); return; }
+      var html = await resp.text();
+      container.innerHTML = html;
+      htmx.process(container);
+      container.querySelectorAll('script').forEach(function(s) {
+        var n = document.createElement('script');
+        n.textContent = s.textContent;
+        s.parentNode.replaceChild(n, s);
+      });
+      if (scroll) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      console.error(err);
+      localStorage.removeItem('ort_active_job');
+    }
+  }
+
+  // Restore active job panel on page load (survives navigation)
+  document.addEventListener('DOMContentLoaded', function() {
+    var jobId = localStorage.getItem('ort_active_job');
+    if (jobId) loadJobPanel(jobId, false);
+  });
+
   async function pickDirectoryInto(targetInputId) {
     try {
       var response = await fetch('/api/pick-directory');
@@ -206,24 +233,8 @@
       var data = await response.json();
 
       if (data.job_id) {
-        // Load inline job panel via HTMX
-        var panelUrl = '/jobs/' + data.job_id + '/panel?lang={{ lang }}';
-        var panelResp = await fetch(panelUrl);
-        var panelHtml = await panelResp.text();
-        container.innerHTML = panelHtml;
-
-        // Process any HTMX attributes in the new content
-        htmx.process(container);
-
-        // Run any inline scripts
-        container.querySelectorAll('script').forEach(function(oldScript) {
-          var newScript = document.createElement('script');
-          newScript.textContent = oldScript.textContent;
-          oldScript.parentNode.replaceChild(newScript, oldScript);
-        });
-
-        // Scroll to the panel smoothly
-        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        localStorage.setItem('ort_active_job', data.job_id);
+        await loadJobPanel(data.job_id, true);
       }
     } catch (err) {
       console.error(err);
