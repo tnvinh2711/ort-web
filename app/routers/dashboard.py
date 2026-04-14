@@ -23,16 +23,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-def _is_install_command(command: str) -> bool:
-    return command == "__install_ort__" or command.startswith("__install_ort__::")
-
-
-def _latest_successful_install() -> Job | None:
-    jobs = job_store.list_jobs(limit=100)
-    for job in jobs:
-        if _is_install_command(job.command) and job.status.value == "success" and job.ort_install_path:
-            return job
-    return None
 
 
 def _is_ort_install_healthy(binary_path: Path) -> bool:
@@ -125,11 +115,7 @@ def home(request: Request) -> HTMLResponse:
     lang = _lang(request)
     jobs = job_store.list_jobs(limit=20)
 
-    install_job = _latest_successful_install()
-    ort_path = install_job.ort_install_path if install_job else None
-
-    if not ort_path:
-        ort_path = _detect_ort_on_disk()
+    ort_path = _detect_ort_on_disk()
 
     notice_key = request.query_params.get("notice", "")
 
@@ -238,15 +224,7 @@ async def install_ort(
     language: str = Form("vi"),
     install_dir: str = Form(""),
 ) -> JSONResponse:
-    # Check job history first, then fall back to disk detection
-    existing_path: str | None = None
-    successful_install = _latest_successful_install()
-    if successful_install and successful_install.ort_install_path:
-        binary_path = Path(successful_install.ort_install_path)
-        if _is_ort_install_healthy(binary_path):
-            existing_path = successful_install.ort_install_path
-    if not existing_path:
-        existing_path = _detect_ort_on_disk()
+    existing_path = _detect_ort_on_disk()
 
     if existing_path:
         return JSONResponse({"already_installed": True, "path": existing_path})
