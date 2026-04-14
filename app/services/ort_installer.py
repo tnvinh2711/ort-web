@@ -30,7 +30,7 @@ def _select_asset(assets: list[dict[str, str]]) -> dict[str, str]:
 
     if system == "Windows":
         candidates = [a for a in assets if is_main_ort(a.get("name", "")) and a.get("name", "").endswith(".zip")]
-    elif system == "Darwin":
+    elif system in ("Darwin", "Linux"):
         candidates = [a for a in assets if is_main_ort(a.get("name", "")) and a.get("name", "").endswith(".tgz")]
     else:
         raise OrtInstallerError(f"Unsupported platform for this installer flow: {system}")

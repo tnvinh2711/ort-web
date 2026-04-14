@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shlex
 import subprocess
 from datetime import datetime
@@ -277,7 +276,10 @@ async def install_ort(
 @router.get("/api/pick-directory")
 def api_pick_directory() -> JSONResponse:
     try:
-        if os.name == "posix":
+        import platform
+        system = platform.system()
+
+        if system == "Darwin":
             result = subprocess.run(
                 [
                     "osascript",
@@ -292,6 +294,36 @@ def api_pick_directory() -> JSONResponse:
                 return JSONResponse({"selected": None})
             selected = result.stdout.strip()
             return JSONResponse({"selected": selected or None})
+
+        if system == "Windows":
+            ps_script = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                "$f.Description = 'Select project folder'; "
+                "if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '' }"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            selected = result.stdout.strip()
+            return JSONResponse({"selected": selected or None})
+
+        if system == "Linux":
+            # Try zenity (GNOME) then kdialog (KDE)
+            for cmd in [
+                ["zenity", "--file-selection", "--directory", "--title=Select project folder"],
+                ["kdialog", "--getexistingdirectory", "/"],
+            ]:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                    if result.returncode == 0:
+                        selected = result.stdout.strip()
+                        return JSONResponse({"selected": selected or None})
+                except FileNotFoundError:
+                    continue
 
         return JSONResponse(
             {"selected": None, "error": "Folder picker is not supported on this platform yet."},
