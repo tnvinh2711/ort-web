@@ -2,86 +2,72 @@
 
 Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolkit/ort) — run ORT analyzer, stream logs in real-time, and browse results from your browser.
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.9+-3776ab?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
 
 - **One-click ORT install** — download and install ORT directly from the UI
-- **Auto language detection** — detects project language (Python, Java, Go, Rust, Node.js, etc.) and auto-configures ORT
-- **Smart config generation** — generates `~/.ort/config/config.yml` and `ort.properties` tailored to detected language
-- **Real-time log streaming** — watch ORT output live via Server-Sent Events (SSE)
+- **Auto language detection** — detects project language and auto-configures ORT
+- **Real-time log streaming** — watch ORT output live via SSE
 - **Job queue** — async job execution with parallel workers
-- **HTML report generation** — auto-generates StaticHtml and WebApp reports after analysis
-- **Result browser** — view and download ORT artifacts (YAML, JSON, HTML reports)
+- **HTML report generation** — auto-generates reports after analysis
+- **Job history** — filter by status, language, time range with pagination
 - **Bilingual UI** — Vietnamese and English
-- **Modern SaaS UI** — clean design with Inter font, inspired by Vercel/Linear
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) |
-| Frontend | [HTMX](https://htmx.org/) + [Jinja2](https://jinja.palletsprojects.com/) |
-| Database | SQLite (job persistence) |
-| Real-time | Server-Sent Events (SSE) |
-| Fonts | Inter + JetBrains Mono |
-
-## Prerequisites
-
-- **Python 3.11+**
-- **Java 21+** (required by ORT)
-- **ORT** — can be installed via the UI or manually
+- **Modern SaaS UI** — glassmorphism design with sidebar navigation
 
 ## Quick Start
 
-### 1. Clone the repository
+### Install
 
 ```bash
 git clone https://github.com/tnvinh2711/ort-web.git
 cd ort-web
-```
-
-### 2. Create virtual environment
-
-```bash
 python3 -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
+source .venv/bin/activate
+pip install -e .
 ```
 
-### 3. Install dependencies
+### Run
 
 ```bash
-pip3 install .
+ort-web
 ```
 
-For Python project analysis support (ORT's PIP analyzer):
+Opens browser at `http://127.0.0.1:8000` automatically.
+
+## CLI Usage
 
 ```bash
-pip3 install python-inspector setuptools
+ort-web                    # Start server + open browser
+ort-web open               # Same as above
+ort-web open -p 3000       # Custom port
+ort-web open --reload      # Dev mode with auto-reload
+ort-web update             # Check for new version + pull
+ort-web update -y          # Update without confirmation
+ort-web version            # Show current version
+ort-web -V                 # Short version
 ```
 
-> **Note:** If you want editable/development mode, use `pip3 install -e ".[dev]"` (requires pip 23+).
+### Update
 
-### 4. Run the app
+When a new version is tagged on GitHub:
 
 ```bash
-uvicorn app.main:app --reload
+ort-web update
 ```
 
-### 5. Open browser
-
-```
-http://127.0.0.1:8000
-```
+This will:
+1. Check GitHub for the latest tag
+2. `git fetch --tags` + `git checkout <tag>`
+3. `pip install -e .` to install updated dependencies
 
 ## Usage
 
 ### Install ORT
 
-Click **"Install ORT"** on the Dashboard. The installer downloads the latest ORT release from GitHub and sets up the binary automatically.
+On first launch, click **"Install ORT"** on the Dashboard. The installer downloads the latest ORT release from GitHub.
 
 Default install locations:
 - **macOS**: `/opt/homebrew/bin` or `/usr/local/bin`
@@ -91,100 +77,79 @@ Default install locations:
 ### Analyze a Project
 
 1. Click **"Pick folder"** to select a project directory
-2. Click **"Detect"** to auto-detect the programming language
-3. The system auto-selects the right package managers and generates ORT config
-4. Click **"Analyze"** to start
+2. Language is auto-detected (Python, Java, Go, Rust, Node.js, etc.)
+3. Click **"Analyze"** to start
 
-ORT will:
-- Generate `~/.ort/config/config.yml` with language-specific settings
-- Generate `ort.properties` with the correct package managers enabled
-- Create a per-job repository config with path excludes
-- Run the analysis and stream logs in real-time
-- Auto-generate HTML reports on success
+The analysis runs inline on the dashboard with realtime log streaming. Results (artifacts) appear when complete.
 
-### Environment Setup
+### Job History
 
-Visit `/setup` to:
-- Detect installed package manager tools on your system
-- Auto-select package managers by language
-- Generate and preview `config.yml`
-- Apply custom `ort.properties` configuration
+Navigate to **"Job History"** in the sidebar to browse all past jobs with:
+- Text search
+- Status filter (success, failed, running, etc.)
+- Language filter
+- Time range (24h, 7d, 30d, 90d, custom)
+- Pagination (10 per page)
+
+Click **"View results"** on any success/failed job to see logs and generated files.
+
+## Prerequisites
+
+- **Python 3.9+**
+- **Java 21+** (required by ORT)
+
+For Python project analysis:
+
+```bash
+pip install python-inspector setuptools
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | FastAPI + Uvicorn |
+| Frontend | HTMX + Jinja2 |
+| Database | SQLite (job persistence) |
+| Real-time | Server-Sent Events (SSE) |
+| CLI | argparse |
+
+## Supported Languages
+
+| Language | Package Managers |
+|----------|-----------------|
+| Python | PIP, Poetry |
+| Java / Kotlin | Gradle, Maven |
+| JavaScript / TypeScript | NPM, PNPM, Yarn |
+| Go | GoMod |
+| Rust | Cargo |
+| C# / .NET | DotNet |
+| C / C++ | Conan |
+| Ruby | Bundler |
+| PHP | Composer |
+| Swift | Swift PM |
 
 ## Project Structure
 
 ```
 ort-web/
   app/
-    main.py                  # FastAPI entry point
-    config.py                # Settings and runtime directories
-    models.py                # Job model and status enum
-    i18n.py                  # Translation utilities
-    i18n/                    # Vietnamese and English translations
-    core/
-      ort_registry.py        # ORT tools/plugins/config metadata
-    routers/
-      dashboard.py           # Main UI, job creation, ORT commands
-      jobs.py                # Job detail, SSE log streaming
-      setup.py               # Environment setup, config management
-      results.py             # Artifact browsing and rendering
-      tools.py               # ORT core tools reference
-      commands.py            # ORT commands reference
-      plugins.py             # ORT plugins reference
-    services/
-      ort_config.py          # config.yml and .ort.yml generation
-      ort_properties.py      # ort.properties management
-      ort_executor.py        # ORT command execution
-      ort_installer.py       # ORT download and installation
-      language_detector.py   # Project language detection
-      job_queue.py           # Async job processing
-      job_store.py           # SQLite job persistence
-      log_stream.py          # SSE pub/sub for real-time logs
-    templates/               # Jinja2 HTML templates
-    static/                  # CSS and JavaScript
-  runtime/                   # Logs, artifacts, database (gitignored)
-  pyproject.toml             # Project metadata and dependencies
+    cli.py             # CLI entry point (ort-web command)
+    _version.py        # Version string
+    main.py            # FastAPI app
+    config.py          # Settings
+    models.py          # Job model
+    i18n/              # Translations (vi, en)
+    routers/           # Route handlers
+    services/          # Business logic (queue, executor, installer)
+    templates/         # Jinja2 HTML
+    static/            # CSS, JS
+  runtime/             # Logs, artifacts, SQLite (gitignored)
+  ARCHITECTURE.md      # Detailed app flow documentation
+  pyproject.toml       # Package config + CLI entry point
 ```
 
-## Supported Languages
-
-| Language | Package Managers | Definition Files |
-|----------|-----------------|-----------------|
-| Python | PIP, Poetry | `pyproject.toml`, `requirements.txt`, `setup.py` |
-| Java | Gradle, Maven | `build.gradle`, `build.gradle.kts`, `pom.xml` |
-| Kotlin | Gradle, Maven | `build.gradle.kts` |
-| JavaScript / TypeScript | NPM, PNPM, Yarn | `package.json` |
-| Go | GoMod | `go.mod` |
-| Rust | Cargo | `Cargo.toml` |
-| C# / .NET | DotNet | `.csproj`, `.sln` |
-| C / C++ | Conan | `conanfile.txt` |
-| Ruby | Bundler | `Gemfile` |
-| PHP | Composer | `composer.json` |
-| Swift | Swift PM | `Package.swift` |
-
-## Configuration
-
-### Auto-generated files
-
-When you run Analyze, the following files are auto-generated:
-
-- **`~/.ort/config/config.yml`** — global ORT configuration (enabled package managers, analyzer settings)
-- **`~/.ort/ort.properties`** — package manager selection
-- **`runtime/artifacts/<job_id>/repo-config.ort.yml`** — per-job path excludes
-
-### Manual configuration
-
-You can also manually configure ORT via the **Setup** page (`/setup`), where you can:
-- Select/deselect individual package managers
-- Provide custom binary paths for missing tools
-- Generate and edit `config.yml`
-
-## Cross-Platform Support
-
-| Platform | Status |
-|----------|--------|
-| macOS (ARM/Intel) | Fully supported |
-| Windows | Supported |
-| Linux | Supported |
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed application flow.
 
 ## License
 
