@@ -59,12 +59,17 @@
       <div class="alert-warning" style="margin-bottom:10px;">
         {{ t('dashboard.install_warning') }}
       </div>
-      <div class="progress-bar progress-bar-indeterminate">
+      <div id="install-progressbar" class="progress-bar progress-bar-indeterminate">
         <div class="progress-bar-fill"></div>
       </div>
       <div style="margin-top:6px; display:flex; align-items:center; justify-content:space-between;">
         <span id="install-status-text" style="font-size:12px; color:var(--muted);">{{ t('dashboard.installing') }}...</span>
         <span id="install-status-badge" class="status-pill status-pill-running"><span class="status-dot"></span>{{ t('status.running') }}</span>
+      </div>
+      <!-- Log area shown on failure -->
+      <div id="install-log-area" style="display:none; margin-top:12px;">
+        <div style="font-size:12px; font-weight:600; margin-bottom:4px; color:var(--danger);">Log cài đặt:</div>
+        <pre id="install-log-text" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></pre>
       </div>
     </div>
   {% endif %}
@@ -258,6 +263,7 @@
       }
 
       if (data.job_id) {
+        var installJobId = data.job_id;
         var pollTimer = null;
         var done = false;
 
@@ -271,14 +277,26 @@
           setTimeout(function() { window.location.reload(); }, 1000);
         }
 
-        function onInstallFailed() {
+        function onInstallFailed(jobId) {
           if (done) return;
           done = true;
           if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
           badge.className = 'status-pill status-pill-failed';
           badge.innerHTML = '<span class="status-dot"></span>{{ t("status.failed") }}';
           statusText.textContent = '{{ t("dashboard.install_failed") }}';
+          document.getElementById('install-progressbar').style.display = 'none';
           btn.disabled = false;
+          // Fetch and show install log
+          if (jobId) {
+            fetch('/jobs/' + jobId + '/log-text').then(function(r) { return r.text(); }).then(function(txt) {
+              if (txt.trim()) {
+                var logArea = document.getElementById('install-log-area');
+                document.getElementById('install-log-text').textContent = txt;
+                logArea.style.display = '';
+                logArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            }).catch(function() {});
+          }
         }
 
         // SSE: real-time status from server
@@ -288,7 +306,7 @@
             var d = JSON.parse(ev.data);
             var st = d.status || '';
             if (st === 'success') { src.close(); onInstallSuccess(); }
-            else if (st === 'failed') { src.close(); onInstallFailed(); }
+            else if (st === 'failed') { src.close(); onInstallFailed(installJobId); }
           } catch (_) {}
         });
         src.addEventListener('log', function(ev) {

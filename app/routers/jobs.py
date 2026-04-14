@@ -120,11 +120,11 @@ def job_inline_panel(request: Request, job_id: str):
 
 @router.get("/{job_id}/log-text")
 def job_log_text(job_id: str):
-    """Return raw log text for a job."""
+    """Return raw log text for a job (works for ephemeral jobs too)."""
+    from app.config import settings as _settings
+    # Try DB first, fall back to log file path derived from job_id
     job = job_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    log_path = Path(job.log_file)
+    log_path = Path(job.log_file) if job else _settings.logs_dir / f"{job_id}.log"
     if log_path.exists():
         return PlainTextResponse(log_path.read_text(encoding="utf-8", errors="replace"))
     return PlainTextResponse("")
