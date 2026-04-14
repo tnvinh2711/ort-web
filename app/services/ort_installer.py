@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import platform
@@ -158,16 +159,19 @@ async def install_ort_local(
             await log(f"Using default install dir: {target_dir}")
 
         try:
-            _ensure_writable_dir(target_dir)
+            await asyncio.to_thread(_ensure_writable_dir, target_dir)
         except Exception:
             fallback = Path.home() / ".local" / "bin"
             await log(f"Install dir not writable: {target_dir}")
             await log(f"Fallback to writable user dir: {fallback}")
             target_dir = fallback
-            _ensure_writable_dir(target_dir)
+            await asyncio.to_thread(_ensure_writable_dir, target_dir)
 
-        with urllib.request.urlopen(GITHUB_LATEST_RELEASE, timeout=30) as response:
-            release = json.loads(response.read().decode("utf-8"))
+        def _fetch_release() -> dict:
+            with urllib.request.urlopen(GITHUB_LATEST_RELEASE, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        release = await asyncio.to_thread(_fetch_release)
 
         assets = release.get("assets", [])
         asset = _select_asset(assets)
@@ -183,20 +187,20 @@ async def install_ort_local(
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             await log("Downloading ORT release archive...")
-            urllib.request.urlretrieve(download_url, archive_path)
+            await asyncio.to_thread(urllib.request.urlretrieve, download_url, archive_path)
 
             await log("Extracting archive...")
-            _extract_archive(archive_path, extract_dir)
+            await asyncio.to_thread(_extract_archive, archive_path, extract_dir)
 
-            source_bin = _find_bin_dir(extract_dir)
+            source_bin = await asyncio.to_thread(_find_bin_dir, extract_dir)
             source_root = source_bin.parent
             await log(f"Installing full distribution to: {target_dir / '.ort-dist' / 'current'}")
-            launcher, install_home = _deploy_distribution(source_root, target_dir)
+            launcher, install_home = await asyncio.to_thread(_deploy_distribution, source_root, target_dir)
 
         if not launcher.exists():
             raise OrtInstallerError(f"Install finished but launcher not found at: {launcher}")
 
-        _verify_ort_runtime(launcher)
+        await asyncio.to_thread(_verify_ort_runtime, launcher)
 
         ort_path = str(launcher)
         await log("ORT installed successfully.")

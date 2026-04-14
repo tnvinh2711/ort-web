@@ -67,6 +67,13 @@ def _detect_ort_on_disk() -> str | None:
     return None
 
 
+@router.get("/api/ort-status")
+def api_ort_status() -> JSONResponse:
+    """Lightweight endpoint to poll ORT install state."""
+    path = _detect_ort_on_disk()
+    return JSONResponse({"installed": path is not None, "path": path})
+
+
 def _lang(request: Request) -> str:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
     return lang if lang in {"vi", "en"} else settings.default_language

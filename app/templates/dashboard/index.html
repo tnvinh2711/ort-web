@@ -258,27 +258,52 @@
       }
 
       if (data.job_id) {
+        var pollTimer = null;
+        var done = false;
+
+        function onInstallSuccess() {
+          if (done) return;
+          done = true;
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          badge.className = 'status-pill status-pill-success';
+          badge.innerHTML = '<span class="status-dot"></span>{{ t("status.success") }}';
+          statusText.textContent = '{{ t("dashboard.install_done") }}';
+          setTimeout(function() { window.location.reload(); }, 1000);
+        }
+
+        function onInstallFailed() {
+          if (done) return;
+          done = true;
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          badge.className = 'status-pill status-pill-failed';
+          badge.innerHTML = '<span class="status-dot"></span>{{ t("status.failed") }}';
+          statusText.textContent = '{{ t("dashboard.install_failed") }}';
+          btn.disabled = false;
+        }
+
+        // SSE: real-time status from server
         var src = new EventSource('/jobs/' + data.job_id + '/events');
         src.addEventListener('status', function(ev) {
           try {
             var d = JSON.parse(ev.data);
             var st = d.status || '';
-            if (st === 'success') {
-              badge.className = 'status-pill status-pill-success';
-              badge.innerHTML = '<span class="status-dot"></span>{{ t("status.success") }}';
-              statusText.textContent = '{{ t("dashboard.install_done") }}';
-              src.close();
-              setTimeout(function() { window.location.reload(); }, 1000);
-            } else if (st === 'failed') {
-              badge.className = 'status-pill status-pill-failed';
-              badge.innerHTML = '<span class="status-dot"></span>{{ t("status.failed") }}';
-              statusText.textContent = '{{ t("dashboard.install_failed") }}';
-              src.close();
-              btn.disabled = false;
-            }
+            if (st === 'success') { src.close(); onInstallSuccess(); }
+            else if (st === 'failed') { src.close(); onInstallFailed(); }
           } catch (_) {}
         });
-        src.onerror = function() { src.close(); };
+
+        // Polling fallback: if SSE drops mid-install, keep checking disk
+        src.onerror = function() {
+          src.close();
+          if (done) return;
+          pollTimer = setInterval(async function() {
+            try {
+              var r = await fetch('/api/ort-status');
+              var s = await r.json();
+              if (s.installed) { clearInterval(pollTimer); onInstallSuccess(); }
+            } catch (_) {}
+          }, 5000);
+        };
       }
     } catch (err) {
       console.error(err);
