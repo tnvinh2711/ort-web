@@ -1,7 +1,7 @@
 [project]
-name = "ort-web-visualizer"
+name = "ort-web"
 version = "0.1.0"
-description = "Local ORT toolkit visualizer with FastAPI + HTMX"
+description = "Local web GUI for OSS Review Toolkit (ORT)"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -18,11 +18,17 @@ dev = [
   "httpx>=0.28.0",
 ]
 
+[project.scripts]
+ort-web = "app.cli:main"
+
 [tool.uvicorn]
 factory = false
 host = "127.0.0.1"
 port = 8000
 reload = true
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [build-system]
 requires = ["setuptools>=68.0"]
