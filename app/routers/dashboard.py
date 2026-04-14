@@ -129,12 +129,16 @@ def home(request: Request) -> HTMLResponse:
     install_job = _latest_successful_install()
     ort_path = install_job.ort_install_path if install_job else None
 
-    # Fallback: check disk directly if job history has no successful install
     if not ort_path:
         ort_path = _detect_ort_on_disk()
 
     notice_key = request.query_params.get("notice", "")
-    
+
+    # KPI stats
+    total_jobs = len(jobs)
+    success_jobs = sum(1 for j in jobs if j.status.value == "success")
+    failed_jobs = sum(1 for j in jobs if j.status.value == "failed")
+
     response = templates.TemplateResponse(
         request,
         "dashboard/index.html",
@@ -148,14 +152,9 @@ def home(request: Request) -> HTMLResponse:
             "language_options": get_language_options(),
             "config_yml_path": str(get_config_yml_path()),
             "config_yml_content": read_config_yml(),
-            "status_map": {
-                "pending": translate(lang, "status.pending"),
-                "running": translate(lang, "status.running"),
-                "success": translate(lang, "status.success"),
-                "failed": translate(lang, "status.failed"),
-                "cancelled": translate(lang, "status.cancelled"),
-            },
-            "default_workdir": str(Path.cwd()),
+            "total_jobs": total_jobs,
+            "success_jobs": success_jobs,
+            "failed_jobs": failed_jobs,
         },
     )
     response.set_cookie("lang", lang)
@@ -165,26 +164,24 @@ def home(request: Request) -> HTMLResponse:
 @router.get("/partials/jobs", response_class=HTMLResponse)
 def jobs_partial(request: Request) -> HTMLResponse:
     lang = _lang(request)
-    jobs = job_store.list_jobs(limit=80)
     status_filter = request.query_params.get("status", "all").strip().lower()
     query = request.query_params.get("q", "").strip().lower()
+    date_from = request.query_params.get("date_from", "").strip()
+    date_to = request.query_params.get("date_to", "").strip()
+    language_filter = request.query_params.get("detected_language", "").strip().lower()
+    page = max(1, int(request.query_params.get("page", "1")))
+    per_page = 10
 
-    if status_filter and status_filter != "all":
-        jobs = [job for job in jobs if job.status.value == status_filter]
-
-    if query:
-        def match(job: Job) -> bool:
-            values = [
-                job.job_id,
-                job.name,
-                job.command,
-                job.project_path or "",
-                job.detected_language or "",
-                job.ort_install_path or "",
-            ]
-            return any(query in value.lower() for value in values)
-
-        jobs = [job for job in jobs if match(job)]
+    jobs, total = job_store.list_jobs_paged(
+        page=page,
+        per_page=per_page,
+        status=status_filter,
+        query=query,
+        date_from=date_from,
+        date_to=date_to,
+        detected_language=language_filter,
+    )
+    total_pages = max(1, (total + per_page - 1) // per_page)
 
     return templates.TemplateResponse(
         request,
@@ -195,6 +192,9 @@ def jobs_partial(request: Request) -> HTMLResponse:
             "t": lambda key: translate(lang, key),
             "fmt_dt": _format_datetime,
             "jobs": jobs,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),
@@ -233,14 +233,12 @@ async def create_job(
     return response
 
 
-@router.post("/jobs/install-ort", response_class=RedirectResponse)
+@router.post("/jobs/install-ort")
 async def install_ort(
     request: Request,
     language: str = Form("vi"),
     install_dir: str = Form(""),
-) -> RedirectResponse:
-    lang = _lang(request)
-
+) -> JSONResponse:
     # Check job history first, then fall back to disk detection
     existing_path: str | None = None
     successful_install = _latest_successful_install()
@@ -252,9 +250,7 @@ async def install_ort(
         existing_path = _detect_ort_on_disk()
 
     if existing_path:
-        response = RedirectResponse(url=f"/?lang={lang}&notice=dashboard.notice_already_installed", status_code=303)
-        response.set_cookie("lang", lang)
-        return response
+        return JSONResponse({"already_installed": True, "path": existing_path})
 
     job_id = uuid4().hex
     log_file = settings.logs_dir / f"{job_id}.log"
@@ -273,11 +269,9 @@ async def install_ort(
         created_at=Job.now_iso(),
         log_file=str(log_file),
     )
-    await job_queue.enqueue(job)
+    await job_queue.enqueue(job, ephemeral=True)
 
-    response = RedirectResponse(url=f"/?lang={lang}", status_code=303)
-    response.set_cookie("lang", lang)
-    return response
+    return JSONResponse({"job_id": job_id})
 
 
 @router.get("/api/pick-directory")
@@ -373,7 +367,7 @@ async def analyze_project(
     }
     
     ort_command = ort_commands.get(command, f"ort analyze -i {project_path}")
-    
+
     job = Job(
         job_id=job_id,
         name=f"ORT {command.title()} {Path(project_path).name}",
@@ -387,7 +381,5 @@ async def analyze_project(
     )
     await job_queue.enqueue(job)
 
-    response = RedirectResponse(url=f"/?lang={lang}", status_code=303)
-    response.set_cookie("lang", lang)
-    return response
+    return JSONResponse({"job_id": job_id})
 

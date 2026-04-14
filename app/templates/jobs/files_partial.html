@@ -1,0 +1,31 @@
+{% if artifact_files %}
+<div class="jobs-table-wrapper" style="margin-top:12px;">
+  <table class="jobs-table jobs-table-compact">
+    <thead>
+      <tr>
+        <th>{{ t('results.file') }}</th>
+        <th>{{ t('results.size') }}</th>
+        <th>{{ t('results.actions') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for file in artifact_files %}
+      <tr>
+        <td class="mono">{{ file.filename }}</td>
+        <td>{{ file.size }} bytes</td>
+        <td class="actions-cell">
+          {% if file.is_html or file.is_text %}
+          <a href="/results/render?path={{ file.path }}" target="_blank">{{ t('results.visualize') }}</a>
+          {% endif %}
+          <a href="/results/download?path={{ file.path }}">{{ t('results.download') }}</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state" style="padding:20px;">
+  <p>{{ t('dashboard.analyzing_wait') }}</p>
+</div>
+{% endif %}

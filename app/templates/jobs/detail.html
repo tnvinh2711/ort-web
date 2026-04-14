@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero">
+  <h1>{{ job.name }}</h1>
+  <p>{{ job.project_path or job.work_dir }}</p>
+</section>
+
+<!-- Job Info Card -->
+<section class="panel" style="border-left:4px solid {% if job.status.value == 'success' %}var(--success){% elif job.status.value == 'failed' %}var(--danger){% elif job.status.value == 'running' %}var(--primary-light){% else %}var(--warning){% endif %};">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+    <h2 style="margin:0;">{{ t('dashboard.ort_status') }}</h2>
+    <span id="job-status-badge" class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ status_map[job.status.value] }}</span>
+  </div>
+
+  <!-- Job meta info -->
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin-top:12px; font-size:13px;">
+    <div>
+      <span style="color:var(--muted); font-size:12px;">Job ID</span>
+      <div class="mono" style="color:var(--secondary);">{{ job.job_id[:12] }}...</div>
+    </div>
+    {% if job.detected_language %}
+    <div>
+      <span style="color:var(--muted); font-size:12px;">{{ t('dashboard.jobs_col_language') }}</span>
+      <div style="color:var(--secondary);">{{ job.detected_language }}</div>
+    </div>
+    {% endif %}
+    <div>
+      <span style="color:var(--muted); font-size:12px;">{{ t('dashboard.jobs_col_created') }}</span>
+      <div class="mono" style="color:var(--secondary);">{{ fmt_dt(job.created_at) }}</div>
+    </div>
+    {% if job.finished_at %}
+    <div>
+      <span style="color:var(--muted); font-size:12px;">Finished</span>
+      <div class="mono" style="color:var(--secondary);">{{ fmt_dt(job.finished_at) }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Command -->
+  <details style="margin-top:12px;">
+    <summary style="cursor:pointer; font-size:12px; color:var(--muted); font-weight:500;">{{ t('dashboard.jobs_col_command') }}</summary>
+    <div class="mono" style="margin-top:4px; font-size:12px; color:var(--secondary); word-break:break-all;">{{ job.command }}</div>
+  </details>
+
+  {% if job.error_message %}
+  <div class="alert-warning" style="margin-top:12px;">{{ job.error_message }}</div>
+  {% endif %}
+
+  <!-- Progress bar for running jobs -->
+  {% if job.status.value in ('pending', 'running') %}
+  <div id="job-progress" class="progress-bar progress-bar-indeterminate" style="margin-top:12px;">
+    <div class="progress-bar-fill"></div>
+  </div>
+  {% endif %}
+
+  <!-- Log — collapsed when done, open when running -->
+  <details id="job-log-details" style="margin-top:12px;" {% if job.status.value in ('pending', 'running') %}open{% endif %}>
+    <summary style="cursor:pointer; font-size:12px; font-weight:500; color:var(--muted);">{{ t('dashboard.show_log') }}</summary>
+    <pre id="job-log" style="max-height:400px; overflow:auto; white-space:pre-wrap; margin-top:8px;">{{ log_text }}</pre>
+  </details>
+</section>
+
+<!-- Generated Files Section — refreshed via HTMX -->
+<section class="panel">
+  <h2>{{ t('results.generated_files') }}</h2>
+  <div id="job-files"
+       hx-get="/jobs/{{ job.job_id }}/files?lang={{ lang }}"
+       hx-trigger="load{% if job.status.value in ('pending', 'running') %}, every 5s{% endif %}"
+       hx-swap="innerHTML">
+  </div>
+</section>
+
+<!-- SSE: realtime log + status update (no page reload) -->
+{% if job.status.value in ('pending', 'running') %}
+<script>
+(function() {
+  var jobId = '{{ job.job_id }}';
+  var logEl = document.getElementById('job-log');
+  var badge = document.getElementById('job-status-badge');
+  var progress = document.getElementById('job-progress');
+  var filesEl = document.getElementById('job-files');
+  var src = new EventSource('/jobs/' + jobId + '/events');
+
+  if (logEl) logEl.scrollTop = logEl.scrollHeight;
+
+  src.addEventListener('log', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      if (data.line && logEl) {
+        logEl.textContent += data.line;
+        var nearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 100;
+        if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
+      }
+    } catch (_) {}
+  });
+
+  src.addEventListener('status', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      var status = data.status || '';
+
+      // Update badge in-place
+      if (badge) {
+        badge.className = 'status-pill status-pill-' + status;
+        var label = status;
+        {% for key, val in status_map.items() %}
+        if (status === '{{ key }}') label = '{{ val }}';
+        {% endfor %}
+        badge.innerHTML = '<span class="status-dot"></span>' + label;
+      }
+
+      if (status === 'success' || status === 'failed' || status === 'cancelled') {
+        src.close();
+        if (progress) progress.style.display = 'none';
+        var logDetails = document.getElementById('job-log-details');
+        if (logDetails) logDetails.removeAttribute('open');
+        if (filesEl) htmx.trigger(filesEl, 'load');
+        // Reload full log from server
+        fetch('/jobs/' + jobId + '/log-text').then(function(r) { return r.text(); }).then(function(txt) {
+          if (logEl && txt) logEl.textContent = txt;
+        });
+      }
+    } catch (_) {}
+  });
+
+  src.onerror = function() { src.close(); };
+})();
+</script>
+{% endif %}
+{% endblock %}

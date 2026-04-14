@@ -25,57 +25,56 @@
 
 <!-- Detection Status -->
 <section class="panel">
-  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <h2 style="margin:0;">{{ t('setup.detect_title') }}</h2>
     <button type="button" class="btn-secondary" onclick="redetectAll()" id="redetectBtn">
       {{ t('setup.redetect_btn') }}
     </button>
   </div>
-  <p style="color:var(--muted); margin:0.4rem 0 1rem;">{{ t('setup.detect_help') }}</p>
-  <p style="color:var(--danger); margin:0 0 1rem; font-size:0.88rem;">{{ t('setup.select_hint') }}</p>
+  <p style="color:var(--muted); margin:6px 0 12px; font-size:13px;">{{ t('setup.detect_help') }}</p>
+  <p style="color:var(--danger); margin:0 0 12px; font-size:13px;">{{ t('setup.select_hint') }}</p>
 
-  <div id="tools-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:0.75rem;">
+  <div id="tools-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:12px;">
     {% for tool in tools %}
     <div class="tool-card {{ 'tool-detected' if tool.detected else 'tool-missing' }}"
          data-ort-name="{{ tool.ort_name }}"
          id="tool-card-{{ tool.ort_name }}">
-      <div style="display:flex; align-items:flex-start; gap:0.6rem;">
-        <label style="display:flex; align-items:center; gap:0.5rem; flex:1; cursor:pointer;">
+      <div style="display:flex; align-items:flex-start; gap:8px;">
+        <label style="display:flex; align-items:center; gap:8px; flex:1; cursor:pointer;">
           <input type="checkbox"
                  class="pm-checkbox"
                  data-ort-name="{{ tool.ort_name }}"
-                 style="width:18px; height:18px; cursor:pointer;" />
+                 style="width:18px; height:18px; cursor:pointer; accent-color:var(--primary);" />
           <span style="font-weight:600;">{{ tool.label }}</span>
         </label>
         <span class="tool-badge {{ 'badge-found' if tool.detected else 'badge-missing' }}">
           {{ t('setup.status_found') if tool.detected else t('setup.status_missing') }}
         </span>
       </div>
-      <p style="margin:0.3rem 0 0; color:var(--muted); font-size:0.88rem;">{{ tool.description }}</p>
+      <p style="margin:6px 0 0; color:var(--muted); font-size:13px;">{{ tool.description }}</p>
 
       {% if tool.detected and tool.path %}
-      <div class="tool-path-row" style="margin-top:0.5rem;">
-        <code style="font-size:0.8rem; word-break:break-all; background:var(--bg); padding:0.2rem 0.4rem; border-radius:6px;">{{ tool.path }}</code>
+      <div style="margin-top:8px;">
+        <code style="font-size:12px; word-break:break-all;">{{ tool.path }}</code>
         {% if tool.version %}
-        <span style="font-size:0.78rem; color:var(--muted); display:block; margin-top:0.2rem;">{{ tool.version }}</span>
+        <span style="font-size:12px; color:var(--muted); display:block; margin-top:3px;">{{ tool.version }}</span>
         {% endif %}
       </div>
       {% else %}
-      <div class="tool-manual-path" style="margin-top:0.5rem;">
+      <div style="margin-top:8px;">
         <div class="row-input">
           <input type="text"
                  class="manual-path-input"
                  data-ort-name="{{ tool.ort_name }}"
                  placeholder="{{ t('setup.manual_path_placeholder') }}"
-                 style="flex:1; font-size:0.85rem;" />
+                 style="flex:1; font-size:13px;" />
           <button type="button"
-                  class="btn-secondary"
-                  onclick="pickManualPath('{{ tool.ort_name }}')"
-                  style="font-size:0.82rem; padding:0.45rem 0.6rem;">
+                  class="btn-secondary btn-sm"
+                  onclick="pickManualPath('{{ tool.ort_name }}')">
             {{ t('dashboard.pick_folder_btn') }}
           </button>
         </div>
-        <p style="margin:0.25rem 0 0; font-size:0.78rem; color:var(--muted);">
+        <p style="margin:4px 0 0; font-size:12px; color:var(--muted);">
           {{ t('setup.manual_hint') }}: <code>{{ tool.detect_commands | join(' / ') }}</code>
         </p>
       </div>
@@ -87,13 +86,13 @@
 
 <!-- Apply Button -->
 <section class="panel">
-  <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <button type="button" class="btn-primary" onclick="applyOrtProperties()" id="applyBtn">
       {{ t('setup.apply_btn') }}
     </button>
-    <span id="applyStatus" style="font-size:0.9rem;"></span>
+    <span id="applyStatus" style="font-size:13px;"></span>
   </div>
-  <p style="color:var(--muted); margin:0.5rem 0 0; font-size:0.88rem;">
+  <p style="color:var(--muted); margin:8px 0 0; font-size:13px;">
     {{ t('setup.apply_help') }}: <code>{{ props_path }}</code>
   </p>
 </section>
@@ -101,21 +100,21 @@
 <!-- Current ort.properties Preview -->
 <section class="panel">
   <h2>{{ t('setup.props_preview_title') }}</h2>
-  <p style="color:var(--muted); margin:0 0 0.5rem; font-size:0.88rem;">{{ props_path }}</p>
+  <p style="color:var(--muted); margin:0 0 8px; font-size:13px;">{{ props_path }}</p>
   <pre id="propsPreview">{{ props_content if props_content else t('setup.props_empty') }}</pre>
 </section>
 
 <!-- config.yml Preview -->
 <section class="panel">
-  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <h2 style="margin:0;">{{ t('setup.config_yml_title') }}</h2>
     <button type="button" class="btn-secondary" onclick="generateConfigYml()" id="generateConfigBtn">
       {{ t('setup.generate_config_btn') }}
     </button>
   </div>
-  <p style="color:var(--muted); margin:0.4rem 0 0.5rem;">{{ t('setup.config_yml_help') }}</p>
-  <p style="color:var(--muted); margin:0 0 0.5rem; font-size:0.88rem;">{{ config_yml_path }}</p>
-  <span id="configGenStatus" style="font-size:0.88rem;"></span>
+  <p style="color:var(--muted); margin:6px 0 8px; font-size:13px;">{{ t('setup.config_yml_help') }}</p>
+  <p style="color:var(--muted); margin:0 0 8px; font-size:13px;">{{ config_yml_path }}</p>
+  <span id="configGenStatus" style="font-size:13px;"></span>
   <pre id="configPreview">{{ config_yml_content if config_yml_content else t('setup.config_yml_empty') }}</pre>
 </section>
 
@@ -126,11 +125,10 @@ function redetectAll() {
 
 function updateToolsGrid(tools) {
   tools.forEach(function(tool) {
-    const card = document.getElementById('tool-card-' + tool.ort_name);
+    var card = document.getElementById('tool-card-' + tool.ort_name);
     if (!card) return;
 
-    // Update badge
-    const badge = card.querySelector('.tool-badge');
+    var badge = card.querySelector('.tool-badge');
     if (badge) {
       badge.textContent = tool.detected
         ? '{{ t("setup.status_found") }}'
@@ -138,17 +136,16 @@ function updateToolsGrid(tools) {
       badge.className = 'tool-badge ' + (tool.detected ? 'badge-found' : 'badge-missing');
     }
 
-    // Update card border
     card.className = 'tool-card ' + (tool.detected ? 'tool-detected' : 'tool-missing');
   });
 }
 
 async function pickManualPath(ortName) {
   try {
-    const res = await fetch('/api/pick-directory');
-    const data = await res.json();
+    var res = await fetch('/api/pick-directory');
+    var data = await res.json();
     if (data.selected) {
-      const input = document.querySelector(`.manual-path-input[data-ort-name="${ortName}"]`);
+      var input = document.querySelector('.manual-path-input[data-ort-name="' + ortName + '"]');
       if (input) input.value = data.selected;
     }
   } catch (e) {
@@ -157,26 +154,25 @@ async function pickManualPath(ortName) {
 }
 
 async function autoSelectManagers() {
-  const lang = document.getElementById('autoSelectLanguage').value;
-  const statusEl = document.getElementById('autoSelectStatus');
+  var lang = document.getElementById('autoSelectLanguage').value;
+  var statusEl = document.getElementById('autoSelectStatus');
   if (!lang) return;
 
   try {
-    const res = await fetch('/setup/api/auto-select', {
+    var res = await fetch('/setup/api/auto-select', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ language: lang }),
     });
-    const data = await res.json();
+    var data = await res.json();
 
     if (data.recommended) {
-      const recommended = new Set(data.recommended);
-      // Uncheck all, then check recommended
+      var recommended = new Set(data.recommended);
       document.querySelectorAll('.pm-checkbox').forEach(function(cb) {
         cb.checked = recommended.has(cb.getAttribute('data-ort-name'));
       });
       statusEl.textContent = data.recommended.join(', ');
-      statusEl.style.color = '#155724';
+      statusEl.style.color = 'var(--success)';
     }
   } catch (e) {
     statusEl.textContent = e.message;
@@ -185,9 +181,9 @@ async function autoSelectManagers() {
 }
 
 async function generateConfigYml() {
-  const lang = document.getElementById('autoSelectLanguage').value;
-  const statusEl = document.getElementById('configGenStatus');
-  const btn = document.getElementById('generateConfigBtn');
+  var lang = document.getElementById('autoSelectLanguage').value;
+  var statusEl = document.getElementById('configGenStatus');
+  var btn = document.getElementById('generateConfigBtn');
   if (!lang) {
     statusEl.textContent = '{{ t("setup.auto_select_language") }}';
     statusEl.style.color = 'var(--danger)';
@@ -196,17 +192,17 @@ async function generateConfigYml() {
 
   btn.disabled = true;
   try {
-    const res = await fetch('/setup/api/generate-config', {
+    var res = await fetch('/setup/api/generate-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ language: lang }),
     });
-    const data = await res.json();
+    var data = await res.json();
 
     if (data.success) {
       statusEl.textContent = '{{ t("setup.config_generated") }} ' + data.language;
-      statusEl.style.color = '#155724';
-      const preview = document.getElementById('configPreview');
+      statusEl.style.color = 'var(--success)';
+      var preview = document.getElementById('configPreview');
       if (preview && data.content) preview.textContent = data.content;
     } else {
       statusEl.textContent = '{{ t("setup.config_generate_error") }}: ' + (data.error || '');
@@ -221,40 +217,37 @@ async function generateConfigYml() {
 }
 
 async function applyOrtProperties() {
-  const btn = document.getElementById('applyBtn');
-  const statusEl = document.getElementById('applyStatus');
+  var btn = document.getElementById('applyBtn');
+  var statusEl = document.getElementById('applyStatus');
   btn.disabled = true;
   statusEl.textContent = '{{ t("setup.applying") }}...';
   statusEl.style.color = 'var(--muted)';
 
-  // Collect enabled managers
-  const enabled = [];
+  var enabled = [];
   document.querySelectorAll('.pm-checkbox:checked').forEach(function(cb) {
     enabled.push(cb.getAttribute('data-ort-name'));
   });
 
-  // Collect custom paths
-  const customPaths = {};
+  var customPaths = {};
   document.querySelectorAll('.manual-path-input').forEach(function(input) {
-    const val = input.value.trim();
+    var val = input.value.trim();
     if (val) {
       customPaths[input.getAttribute('data-ort-name')] = val;
     }
   });
 
   try {
-    const res = await fetch('/setup/api/apply-ort-properties', {
+    var res = await fetch('/setup/api/apply-ort-properties', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled_managers: enabled, custom_paths: customPaths }),
     });
-    const data = await res.json();
+    var data = await res.json();
 
     if (data.success) {
       statusEl.textContent = '{{ t("setup.apply_success") }} (' + data.enabled_count + ' package managers)';
-      statusEl.style.color = '#155724';
-      // Update preview
-      const preview = document.getElementById('propsPreview');
+      statusEl.style.color = 'var(--success)';
+      var preview = document.getElementById('propsPreview');
       if (preview && data.content) preview.textContent = data.content;
     } else {
       statusEl.textContent = '{{ t("setup.apply_error") }}: ' + (data.error || 'Unknown error');

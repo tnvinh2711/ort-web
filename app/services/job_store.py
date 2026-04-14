@@ -116,6 +116,51 @@ class JobStore:
             ).fetchall()
         return [Job.from_row(dict(row)) for row in rows]
 
+    def list_jobs_paged(
+        self,
+        *,
+        page: int = 1,
+        per_page: int = 10,
+        status: str = "",
+        query: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        detected_language: str = "",
+    ) -> tuple[list[Job], int]:
+        """Return (jobs, total_count) with filtering and pagination."""
+        clauses: list[str] = []
+        params: list[str | int] = []
+
+        if status and status != "all":
+            clauses.append("status = ?")
+            params.append(status)
+        if detected_language:
+            clauses.append("lower(coalesce(detected_language,'')) = ?")
+            params.append(detected_language.lower())
+        if query:
+            clauses.append(
+                "(lower(job_id || name || command || coalesce(project_path,'') || coalesce(detected_language,'')) like ?)"
+            )
+            params.append(f"%{query.lower()}%")
+        if date_from:
+            clauses.append("created_at >= ?")
+            params.append(date_from)
+        if date_to:
+            clauses.append("created_at < ?")
+            params.append(date_to + "T23:59:59Z" if "T" not in date_to else date_to)
+
+        where = (" where " + " and ".join(clauses)) if clauses else ""
+
+        with self._connect() as con:
+            total = con.execute(f"select count(*) from jobs{where}", params).fetchone()[0]
+            offset = (page - 1) * per_page
+            rows = con.execute(
+                f"select * from jobs{where} order by created_at desc limit ? offset ?",
+                [*params, per_page, offset],
+            ).fetchall()
+
+        return [Job.from_row(dict(r)) for r in rows], total
+
     def mark_running_jobs_as_failed(self) -> None:
         with self._connect() as con:
             con.execute(

@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
+from app.services.language_detector import get_language_options
 
 # Files to hide from the results listing.
 _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
@@ -55,6 +56,7 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
         result.append(
             {
                 "path": rel_path,
+                "filename": item.name,
                 "size": item.stat().st_size,
                 "is_html": suffix in {".html", ".htm"},
                 "is_text": suffix in {".json", ".yml", ".yaml", ".txt", ".log", ".xml", ".csv", ".md"},
@@ -99,6 +101,7 @@ def results_page(request: Request) -> HTMLResponse:
             "request": request,
             "lang": lang,
             "t": lambda key: translate(lang, key),
+            "language_options": get_language_options(),
             "artifact_files": artifact_files,
             "latest_run_dir": latest_run_dir,
             "show_all": show_all,

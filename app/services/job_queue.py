@@ -96,6 +96,7 @@ class JobQueue:
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._workers: list[asyncio.Task[None]] = []
         self._started = False
+        self._ephemeral_jobs: dict[str, Job | None] = {}
 
     async def start(self) -> None:
         if self._started:
@@ -115,8 +116,10 @@ class JobQueue:
         self._workers.clear()
         self._started = False
 
-    async def enqueue(self, job: Job) -> None:
-        job_store.create_job(job)
+    async def enqueue(self, job: Job, *, ephemeral: bool = False) -> None:
+        if not ephemeral:
+            job_store.create_job(job)
+        self._ephemeral_jobs[job.job_id] = job if ephemeral else None
         await self._queue.put(job.job_id)
 
     async def _worker_loop(self) -> None:
@@ -128,13 +131,19 @@ class JobQueue:
                 self._queue.task_done()
 
     async def _run(self, job_id: str) -> None:
-        job = job_store.get_job(job_id)
+        ephemeral = job_id in self._ephemeral_jobs and self._ephemeral_jobs[job_id] is not None
+        if ephemeral:
+            job = self._ephemeral_jobs.pop(job_id)
+        else:
+            self._ephemeral_jobs.pop(job_id, None)
+            job = job_store.get_job(job_id)
         if not job:
             return
 
         job.status = JobStatus.RUNNING
         job.started_at = Job.now_iso()
-        job_store.update_job(job)
+        if not ephemeral:
+            job_store.update_job(job)
         await log_stream_hub.publish(job_id, {"type": "status", "status": job.status.value})
 
         log_file = Path(job.log_file)
@@ -204,7 +213,8 @@ class JobQueue:
                 out.write(f"[error] Unexpected error: {exc}\n")
         finally:
             job.finished_at = Job.now_iso()
-            job_store.update_job(job)
+            if not ephemeral:
+                job_store.update_job(job)
             await log_stream_hub.publish(job_id, {"type": "status", "status": job.status.value})
 
 

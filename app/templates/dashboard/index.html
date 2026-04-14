@@ -11,14 +11,34 @@
 </section>
 {% endif %}
 
+<!-- KPI Stats Row -->
+<div class="stat-row">
+  <div class="stat-card {% if ort_path %}stat-success{% else %}stat-danger{% endif %}">
+    <div class="stat-label">ORT Status</div>
+    <div class="stat-value">{% if ort_path %}Active{% else %}N/A{% endif %}</div>
+  </div>
+  <div class="stat-card stat-info">
+    <div class="stat-label">{{ t('dashboard.recent_jobs') }}</div>
+    <div class="stat-value">{{ total_jobs if total_jobs is defined else '-' }}</div>
+  </div>
+  <div class="stat-card stat-success">
+    <div class="stat-label">{{ t('status.success') }}</div>
+    <div class="stat-value">{{ success_jobs if success_jobs is defined else '-' }}</div>
+  </div>
+  <div class="stat-card stat-danger">
+    <div class="stat-label">{{ t('status.failed') }}</div>
+    <div class="stat-value">{{ failed_jobs if failed_jobs is defined else '-' }}</div>
+  </div>
+</div>
+
 <!-- ORT Status Section -->
 <section class="panel">
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <h2 style="margin:0;">{{ t('dashboard.ort_status') }}</h2>
     {% if ort_path %}
-      <span class="status-pill status-pill-success">{{ t('dashboard.ort_installed') }}</span>
+      <span class="status-pill status-pill-success"><span class="status-dot"></span>{{ t('dashboard.ort_installed') }}</span>
     {% else %}
-      <span class="status-pill status-pill-failed">{{ t('dashboard.ort_not_installed') }}</span>
+      <span class="status-pill status-pill-failed"><span class="status-dot"></span>{{ t('dashboard.ort_not_installed') }}</span>
     {% endif %}
   </div>
 
@@ -26,14 +46,27 @@
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);"><code>{{ ort_path }}</code></p>
   {% else %}
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">{{ t('dashboard.ort_install_prompt') }}</p>
-    <form method="post" action="/jobs/install-ort" style="margin-top:12px;">
+    <form id="installForm" onsubmit="return submitInstall(event);" style="margin-top:12px;">
       <input type="hidden" name="language" value="{{ lang }}" />
       <div class="row-input">
         <input id="installDir" name="install_dir" placeholder="{{ t('dashboard.install_dir_placeholder') }}" style="flex:1;" />
         <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">Folder</button>
-        <button type="submit" class="btn-primary">{{ t('dashboard.install_ort_btn') }}</button>
+        <button type="submit" class="btn-primary" id="installBtn">{{ t('dashboard.install_ort_btn') }}</button>
       </div>
     </form>
+    <!-- Install progress (hidden by default) -->
+    <div id="install-progress" style="display:none; margin-top:12px;">
+      <div class="alert-warning" style="margin-bottom:10px;">
+        {{ t('dashboard.install_warning') }}
+      </div>
+      <div class="progress-bar progress-bar-indeterminate">
+        <div class="progress-bar-fill"></div>
+      </div>
+      <div style="margin-top:6px; display:flex; align-items:center; justify-content:space-between;">
+        <span id="install-status-text" style="font-size:12px; color:var(--muted);">{{ t('dashboard.installing') }}...</span>
+        <span id="install-status-badge" class="status-pill status-pill-running"><span class="status-dot"></span>{{ t('status.running') }}</span>
+      </div>
+    </div>
   {% endif %}
 </section>
 
@@ -42,20 +75,22 @@
 <section class="panel">
   <h2>{{ t('dashboard.project_analysis') }}</h2>
   <p>{{ t('dashboard.project_analysis_help') }}</p>
-  
-  <form method="post" action="/jobs/analyze-project" id="projectForm">
+
+  <form id="projectForm" onsubmit="return submitAnalysis(event);">
     <input type="hidden" name="ui_language" value="{{ lang }}" />
     <input type="hidden" name="command" value="analyze" />
 
     <label>{{ t('dashboard.project_path') }}</label>
     <div class="row-input">
-      <input type="text" name="project_path" id="projectPath" value="" placeholder="{{ t('dashboard.project_path') }}..." required readonly style="flex:1;" />
+      <input type="text" name="project_path" id="projectPath"
+             value=""
+             placeholder="{{ t('dashboard.project_path') }}..."
+             required readonly style="flex:1;" />
       <button type="button" onclick="pickProjectDirectory()" class="btn-secondary">
         {{ t('dashboard.pick_folder_btn') }}
       </button>
     </div>
 
-    <!-- Analyzer options — hidden until a folder is selected -->
     <div id="analyzerOptions" style="display:none;">
       <label>{{ t('dashboard.language_select') }}</label>
       <div class="row-input">
@@ -65,19 +100,17 @@
             <option value="{{ opt.value }}">{{ opt.label }}</option>
           {% endfor %}
         </select>
-        <button type="submit" class="btn-primary">
+        <button type="submit" class="btn-primary" id="analyzeBtn">
           {{ t('dashboard.cmd_analyze') }}
         </button>
       </div>
 
-      <!-- Recommended managers info (populated by detectLanguage JS) -->
-      <div id="recommendedManagers" style="display:none; padding:8px 12px; background:var(--accent-light); border:1px solid #bfdbfe; border-radius:var(--radius); font-size:13px; color:#1e40af; margin-top:8px;">
+      <div id="recommendedManagers" style="display:none; padding:10px 14px; background:var(--info-light); border:1px solid var(--info-border); border-radius:var(--radius); font-size:13px; color:var(--primary); margin-top:8px;">
         <strong>{{ t('dashboard.recommended_managers') }}:</strong>
         <span id="recommendedManagersList"></span>
       </div>
 
-      <!-- Config status -->
-      <div style="padding:8px 12px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary); margin-top:8px;">
+      <div style="padding:10px 14px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary); margin-top:8px;">
         {% if config_yml_content %}
           <span style="color:var(--success);">{{ t('dashboard.config_ready') }}: <code>{{ config_yml_path }}</code></span>
         {% else %}
@@ -87,243 +120,173 @@
       </div>
     </div>
   </form>
-  
-  <script>
-    async function pickDirectoryInto(targetInputId) {
-      try {
-        const response = await fetch('/api/pick-directory');
-        const data = await response.json();
-        if (data.selected) {
-          document.getElementById(targetInputId).value = data.selected;
-          return;
-        }
-        alert('{{ t("dashboard.error_pick_folder") }}');
-      } catch (err) {
-        console.error(err);
-        alert('{{ t("dashboard.error_pick_folder") }}');
-      }
-    }
-
-    async function pickInstallDirectory() {
-      await pickDirectoryInto('installDir');
-    }
-
-    async function pickProjectDirectory() {
-      await pickDirectoryInto('projectPath');
-      var path = document.getElementById('projectPath').value;
-      if (path) {
-        document.getElementById('analyzerOptions').style.display = '';
-        await detectLanguage();
-      }
-    }
-
-    async function detectLanguage() {
-      const projectPath = document.getElementById('projectPath').value;
-      const languageSelect = document.getElementById('languageSelect');
-      
-      if (!projectPath) {
-        alert('{{ t("dashboard.error_no_path") }}');
-        return;
-      }
-      
-      try {
-        const response = await fetch('/api/detect-language', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_path: projectPath })
-        });
-        const data = await response.json();
-        
-        if (data.detected) {
-          languageSelect.value = data.detected;
-          // Show recommended package managers
-          const mgrsBox = document.getElementById('recommendedManagers');
-          const mgrsList = document.getElementById('recommendedManagersList');
-          if (data.recommended_managers && data.recommended_managers.length > 0) {
-            mgrsList.textContent = data.recommended_managers.join(', ');
-            mgrsBox.style.display = 'block';
-          } else {
-            mgrsBox.style.display = 'none';
-          }
-        } else {
-          alert('{{ t("dashboard.error_detect") }}');
-        }
-      } catch (err) {
-        console.error(err);
-        alert('{{ t("dashboard.error_detect") }}');
-      }
-    }
-  </script>
 </section>
 {% endif %}
 
-<!-- Recent Jobs Section -->
-<section class="panel">
-  <h2>{{ t('dashboard.recent_jobs') }}</h2>
-  <form id="jobs-filter-form" class="jobs-filter" onsubmit="return false;">
-    <input id="jobs-filter-q" name="q" placeholder="{{ t('dashboard.jobs_filter_placeholder') }}" />
-    <select id="jobs-filter-status" name="status">
-      <option value="all">{{ t('dashboard.jobs_filter_all') }}</option>
-      <option value="pending">{{ t('status.pending') }}</option>
-      <option value="running">{{ t('status.running') }}</option>
-      <option value="success">{{ t('status.success') }}</option>
-      <option value="failed">{{ t('status.failed') }}</option>
-      <option value="cancelled">{{ t('status.cancelled') }}</option>
-    </select>
-  </form>
-  <div
-    id="jobs-container"
-    hx-get="/partials/jobs?lang={{ lang }}"
-    hx-include="#jobs-filter-form"
-    hx-trigger="load, refresh-jobs, every 4s [!window.__pauseJobsPolling], keyup changed delay:300ms from:#jobs-filter-form, change from:#jobs-filter-form"
-    hx-swap="innerHTML"
-  ></div>
+<!-- Inline job panel container — populated by JS after analyze submit -->
+<div id="job-panel-container"></div>
 
-  <script>
-    (function () {
-      window.__pauseJobsPolling = window.__pauseJobsPolling || false;
-      window.__jobsExpandedIds = window.__jobsExpandedIds || [];
-      window.__jobsScrollTop = window.__jobsScrollTop || 0;
-      window.__jobStatusStreams = window.__jobStatusStreams || {};
-      window.__lastRealtimeRefreshAt = window.__lastRealtimeRefreshAt || 0;
+<script>
+  async function pickDirectoryInto(targetInputId) {
+    try {
+      var response = await fetch('/api/pick-directory');
+      var data = await response.json();
+      if (data.selected) {
+        document.getElementById(targetInputId).value = data.selected;
+        return;
+      }
+      alert('{{ t("dashboard.error_pick_folder") }}');
+    } catch (err) {
+      console.error(err);
+      alert('{{ t("dashboard.error_pick_folder") }}');
+    }
+  }
 
-      function triggerRealtimeRefresh() {
-        const now = Date.now();
-        if (now - window.__lastRealtimeRefreshAt < 800) {
-          return;
-        }
-        window.__lastRealtimeRefreshAt = now;
-        const root = document.getElementById('jobs-container');
-        if (root) {
-          htmx.trigger(root, 'refresh-jobs');
+  async function pickInstallDirectory() {
+    await pickDirectoryInto('installDir');
+  }
+
+  async function pickProjectDirectory() {
+    await pickDirectoryInto('projectPath');
+    var path = document.getElementById('projectPath').value;
+    if (path) {
+      document.getElementById('analyzerOptions').style.display = '';
+      await detectLanguage();
+    }
+  }
+
+  async function detectLanguage() {
+    var projectPath = document.getElementById('projectPath').value;
+    var languageSelect = document.getElementById('languageSelect');
+    if (!projectPath) return;
+
+    try {
+      var response = await fetch('/api/detect-language', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_path: projectPath })
+      });
+      var data = await response.json();
+
+      if (data.detected) {
+        languageSelect.value = data.detected;
+        var mgrsBox = document.getElementById('recommendedManagers');
+        var mgrsList = document.getElementById('recommendedManagersList');
+        if (data.recommended_managers && data.recommended_managers.length > 0) {
+          mgrsList.textContent = data.recommended_managers.join(', ');
+          mgrsBox.style.display = 'block';
+        } else {
+          mgrsBox.style.display = 'none';
         }
       }
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
-      function syncJobStatusStreams(root) {
-        const rows = root.querySelectorAll('tr[data-job-id][data-job-status]');
-        const activeIds = new Set();
+  async function submitAnalysis(e) {
+    e.preventDefault();
+    var form = document.getElementById('projectForm');
+    var btn = document.getElementById('analyzeBtn');
+    var container = document.getElementById('job-panel-container');
 
-        rows.forEach(function (row) {
-          const jobId = row.getAttribute('data-job-id');
-          const status = row.getAttribute('data-job-status');
-          if (!jobId) {
-            return;
-          }
+    btn.disabled = true;
+    btn.textContent = '{{ t("status.running") }}...';
 
-          activeIds.add(jobId);
-          if (!['pending', 'running'].includes(status || '')) {
-            return;
-          }
+    try {
+      var response = await fetch('/jobs/analyze-project', {
+        method: 'POST',
+        body: new FormData(form)
+      });
+      var data = await response.json();
 
-          if (window.__jobStatusStreams[jobId]) {
-            return;
-          }
+      if (data.job_id) {
+        // Load inline job panel via HTMX
+        var panelUrl = '/jobs/' + data.job_id + '/panel?lang={{ lang }}';
+        var panelResp = await fetch(panelUrl);
+        var panelHtml = await panelResp.text();
+        container.innerHTML = panelHtml;
 
-          const stream = new EventSource('/jobs/' + jobId + '/events');
-          stream.addEventListener('status', function () {
-            triggerRealtimeRefresh();
-          });
-          stream.onerror = function () {
-            try {
-              stream.close();
-            } catch (_) {}
-            delete window.__jobStatusStreams[jobId];
-          };
+        // Process any HTMX attributes in the new content
+        htmx.process(container);
 
-          window.__jobStatusStreams[jobId] = stream;
+        // Run any inline scripts
+        container.querySelectorAll('script').forEach(function(oldScript) {
+          var newScript = document.createElement('script');
+          newScript.textContent = oldScript.textContent;
+          oldScript.parentNode.replaceChild(newScript, oldScript);
         });
 
-        Object.keys(window.__jobStatusStreams).forEach(function (jobId) {
-          if (!activeIds.has(jobId)) {
-            try {
-              window.__jobStatusStreams[jobId].close();
-            } catch (_) {}
-            delete window.__jobStatusStreams[jobId];
-          }
-        });
+        // Scroll to the panel smoothly
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } catch (err) {
+      console.error(err);
+      alert('{{ t("dashboard.error_pick_folder") }}');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '{{ t("dashboard.cmd_analyze") }}';
+    }
+
+    return false;
+  }
+
+  async function submitInstall(e) {
+    e.preventDefault();
+    var form = document.getElementById('installForm');
+    var btn = document.getElementById('installBtn');
+    var progressEl = document.getElementById('install-progress');
+    var badge = document.getElementById('install-status-badge');
+    var statusText = document.getElementById('install-status-text');
+
+    btn.disabled = true;
+    progressEl.style.display = '';
+
+    try {
+      var response = await fetch('/jobs/install-ort', {
+        method: 'POST',
+        body: new FormData(form)
+      });
+      var data = await response.json();
+
+      if (data.already_installed) {
+        statusText.textContent = '{{ t("dashboard.notice_already_installed") }}';
+        badge.className = 'status-pill status-pill-success';
+        badge.innerHTML = '<span class="status-dot"></span>{{ t("status.success") }}';
+        setTimeout(function() { window.location.reload(); }, 1000);
+        return false;
       }
 
-      function updatePollingStateFromOpenDetails(root) {
-        const opened = root.querySelectorAll('details.job-expand-details[open]');
-        window.__pauseJobsPolling = opened.length > 0;
-      }
-
-      document.body.addEventListener('toggle', function (event) {
-        const target = event.target;
-        if (!target.matches || !target.matches('details.job-expand-details')) {
-          return;
-        }
-
-        const root = document.getElementById('jobs-container');
-        if (!root) {
-          return;
-        }
-
-        const opened = root.querySelectorAll('details.job-expand-details[open]');
-        window.__jobsExpandedIds = Array.from(opened)
-          .map((d) => d.getAttribute('data-job-id'))
-          .filter(Boolean);
-        updatePollingStateFromOpenDetails(root);
-      });
-
-      document.body.addEventListener('htmx:beforeRequest', function (event) {
-        const elt = event.detail && event.detail.elt;
-        if (!elt || elt.id !== 'jobs-container') {
-          return;
-        }
-
-        const root = document.getElementById('jobs-container');
-        if (!root) {
-          return;
-        }
-
-        const wrapper = root.querySelector('.jobs-table-wrapper');
-        window.__jobsScrollTop = wrapper ? wrapper.scrollTop : 0;
-
-        const opened = root.querySelectorAll('details.job-expand-details[open]');
-        window.__jobsExpandedIds = Array.from(opened)
-          .map((d) => d.getAttribute('data-job-id'))
-          .filter(Boolean);
-      });
-
-      document.body.addEventListener('htmx:afterSwap', function (event) {
-        const elt = event.detail && event.detail.elt;
-        if (!elt || elt.id !== 'jobs-container') {
-          return;
-        }
-
-        const root = document.getElementById('jobs-container');
-        if (!root) {
-          return;
-        }
-
-        (window.__jobsExpandedIds || []).forEach(function (jobId) {
-          const detail = root.querySelector('details.job-expand-details[data-job-id="' + jobId + '"]');
-          if (detail) {
-            detail.open = true;
-          }
+      if (data.job_id) {
+        var src = new EventSource('/jobs/' + data.job_id + '/events');
+        src.addEventListener('status', function(ev) {
+          try {
+            var d = JSON.parse(ev.data);
+            var st = d.status || '';
+            if (st === 'success') {
+              badge.className = 'status-pill status-pill-success';
+              badge.innerHTML = '<span class="status-dot"></span>{{ t("status.success") }}';
+              statusText.textContent = '{{ t("dashboard.install_done") }}';
+              src.close();
+              setTimeout(function() { window.location.reload(); }, 1000);
+            } else if (st === 'failed') {
+              badge.className = 'status-pill status-pill-failed';
+              badge.innerHTML = '<span class="status-dot"></span>{{ t("status.failed") }}';
+              statusText.textContent = '{{ t("dashboard.install_failed") }}';
+              src.close();
+              btn.disabled = false;
+            }
+          } catch (_) {}
         });
+        src.onerror = function() { src.close(); };
+      }
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      progressEl.style.display = 'none';
+    }
 
-        const wrapper = root.querySelector('.jobs-table-wrapper');
-        if (wrapper && typeof window.__jobsScrollTop === 'number') {
-          wrapper.scrollTop = window.__jobsScrollTop;
-        }
-
-        updatePollingStateFromOpenDetails(root);
-        syncJobStatusStreams(root);
-      });
-
-      document.body.addEventListener('htmx:load', function (event) {
-        const root = document.getElementById('jobs-container');
-        if (!root) {
-          return;
-        }
-        if (event.target && (event.target.id === 'jobs-container' || root.contains(event.target))) {
-          syncJobStatusStreams(root);
-        }
-      });
-    })();
-  </script>
-</section>
+    return false;
+  }
+</script>
 {% endblock %}
-

@@ -1,52 +1,106 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="hero compact">
-  <h1>{{ t('results.title') if t('results.title') != 'results.title' else 'Results and Configuration Ecosystem' }}</h1>
-  <p>{{ t('results.subtitle') if t('results.subtitle') != 'results.subtitle' else 'Track artifacts, configuration dependencies, and related ORT tools.' }}</p>
+<section class="hero">
+  <h1>{{ t('nav.history') }}</h1>
+  <p>{{ t('dashboard.jobs_filter_placeholder') }}</p>
 </section>
 
 <section class="panel">
-  <h2>{{ t('results.generated_files') if t('results.generated_files') != 'results.generated_files' else 'Generated Result Files' }}</h2>
-  <p class="result-scope-note">
-    {% if latest_run_dir and not show_all %}
-      {{ t('results.showing_latest') if t('results.showing_latest') != 'results.showing_latest' else 'Showing latest run:' }}
-      <strong class="mono">{{ latest_run_dir }}</strong>
-      <a href="/results/?lang={{ lang }}&scope=all">{{ t('results.show_all') if t('results.show_all') != 'results.show_all' else 'Show all files' }}</a>
-    {% elif show_all %}
-      {{ t('results.showing_all') if t('results.showing_all') != 'results.showing_all' else 'Showing all artifact files.' }}
-      {% if latest_run_dir %}
-      <a href="/results/?lang={{ lang }}">{{ t('results.show_latest') if t('results.show_latest') != 'results.show_latest' else 'Show latest run only' }}</a>
-      {% endif %}
-    {% endif %}
-  </p>
-  {% if artifact_files %}
-  <div class="jobs-table-wrapper">
-    <table class="jobs-table jobs-table-compact">
-      <thead>
-        <tr>
-          <th>{{ t('results.file') if t('results.file') != 'results.file' else 'File' }}</th>
-          <th>{{ t('results.size') if t('results.size') != 'results.size' else 'Size' }}</th>
-          <th>{{ t('results.actions') if t('results.actions') != 'results.actions' else 'Actions' }}</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for file in artifact_files %}
-        <tr>
-          <td class="mono">{{ file.path }}</td>
-          <td>{{ file.size }} bytes</td>
-          <td>
-            {% if file.is_html or file.is_text %}
-            <a href="/results/render?path={{ file.path }}" target="_blank">{{ t('results.visualize') if t('results.visualize') != 'results.visualize' else 'Visualize' }}</a>
-            {% endif %}
-            <a href="/results/download?path={{ file.path }}">{{ t('results.download') if t('results.download') != 'results.download' else 'Download' }}</a>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p>{{ t('results.no_files') if t('results.no_files') != 'results.no_files' else 'No files found in runtime/artifacts yet. Run Analyze first.' }}</p>
-  {% endif %}
+  <form id="jobs-filter-form" onsubmit="return false;">
+    <!-- Row 1: Search -->
+    <input id="jobs-filter-q" name="q" placeholder="{{ t('dashboard.jobs_filter_placeholder') }}" />
+
+    <!-- Row 2: Dropdowns -->
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+      <select id="jobs-filter-status" name="status">
+        <option value="all">{{ t('dashboard.jobs_filter_all') }}</option>
+        <option value="pending">{{ t('status.pending') }}</option>
+        <option value="running">{{ t('status.running') }}</option>
+        <option value="success">{{ t('status.success') }}</option>
+        <option value="failed">{{ t('status.failed') }}</option>
+        <option value="cancelled">{{ t('status.cancelled') }}</option>
+      </select>
+      <select id="jobs-filter-language" name="detected_language">
+        <option value="">{{ t('dashboard.filter_all_languages') }}</option>
+        {% for opt in language_options %}
+        <option value="{{ opt.value }}">{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      <select id="jobs-filter-time" name="time_range">
+        <option value="">{{ t('dashboard.time_all') }}</option>
+        <option value="1">{{ t('dashboard.time_1d') }}</option>
+        <option value="7">{{ t('dashboard.time_7d') }}</option>
+        <option value="30">{{ t('dashboard.time_30d') }}</option>
+        <option value="90">{{ t('dashboard.time_90d') }}</option>
+        <option value="custom">{{ t('dashboard.time_custom') }}</option>
+      </select>
+    </div>
+
+    <!-- Custom date range -->
+    <div id="custom-date-range" style="display:none;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <label style="font-size:12px; color:var(--muted); white-space:nowrap;">{{ t('dashboard.date_from') }}</label>
+        <input type="date" id="jobs-filter-date-from" name="date_from" style="flex:1;" />
+        <label style="font-size:12px; color:var(--muted); white-space:nowrap;">{{ t('dashboard.date_to') }}</label>
+        <input type="date" id="jobs-filter-date-to" name="date_to" style="flex:1;" />
+      </div>
+    </div>
+
+    <input type="hidden" id="jobs-filter-page" name="page" value="1" />
+  </form>
+
+  <div
+    id="jobs-container"
+    hx-get="/partials/jobs?lang={{ lang }}"
+    hx-include="#jobs-filter-form"
+    hx-trigger="load, refresh-jobs, keyup changed delay:300ms from:#jobs-filter-q, change from:#jobs-filter-status, change from:#jobs-filter-language"
+    hx-swap="innerHTML"
+  ></div>
+
+  <script>
+    var timeSelect = document.getElementById('jobs-filter-time');
+    var customRange = document.getElementById('custom-date-range');
+    var dateFrom = document.getElementById('jobs-filter-date-from');
+    var dateTo = document.getElementById('jobs-filter-date-to');
+
+    timeSelect.addEventListener('change', function() {
+      var val = timeSelect.value;
+      if (val === 'custom') {
+        customRange.style.display = '';
+        return;
+      }
+      customRange.style.display = 'none';
+      if (val !== '') {
+        var d = new Date();
+        d.setDate(d.getDate() - parseInt(val));
+        dateFrom.value = d.toISOString().split('T')[0];
+        dateTo.value = '';
+      } else {
+        dateFrom.value = '';
+        dateTo.value = '';
+      }
+      document.getElementById('jobs-filter-page').value = '1';
+      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+    });
+
+    dateFrom.addEventListener('change', function() {
+      document.getElementById('jobs-filter-page').value = '1';
+      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+    });
+    dateTo.addEventListener('change', function() {
+      document.getElementById('jobs-filter-page').value = '1';
+      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+    });
+
+    document.querySelectorAll('#jobs-filter-q, #jobs-filter-status, #jobs-filter-language').forEach(function(el) {
+      el.addEventListener('change', function() { document.getElementById('jobs-filter-page').value = '1'; });
+      el.addEventListener('keyup', function() { document.getElementById('jobs-filter-page').value = '1'; });
+    });
+
+    function goToPage(p) {
+      document.getElementById('jobs-filter-page').value = p;
+      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+    }
+  </script>
 </section>
 {% endblock %}

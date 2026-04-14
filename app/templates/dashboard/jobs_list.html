@@ -1,57 +1,61 @@
 {% if jobs %}
-<div class="jobs-table-wrapper">
-  <table class="jobs-table jobs-table-compact">
-    <thead>
-      <tr>
-        <th>{{ t('dashboard.jobs_col_name') if t('dashboard.jobs_col_name') != 'dashboard.jobs_col_name' else 'Name' }}</th>
-        <th>{{ t('dashboard.jobs_col_status') if t('dashboard.jobs_col_status') != 'dashboard.jobs_col_status' else 'Status' }}</th>
-        <th>{{ t('dashboard.jobs_col_created') if t('dashboard.jobs_col_created') != 'dashboard.jobs_col_created' else 'Created' }}</th>
-        <th>{{ t('dashboard.jobs_col_actions') if t('dashboard.jobs_col_actions') != 'dashboard.jobs_col_actions' else 'Actions' }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for job in jobs %}
-      <tr class="status-row-{{ job.status.value }}" data-job-id="{{ job.job_id }}" data-job-status="{{ job.status.value }}">
-        <td>
-          <div class="job-main-name">{{ job.name }}</div>
-          {% if job.project_path %}
-          <div class="job-sub mono">{{ job.project_path }}</div>
-          {% endif %}
-        </td>
-        <td><span class="status-pill status-pill-{{ job.status.value }}">{{ status_map[job.status.value] }}</span></td>
-        <td class="mono">{{ fmt_dt(job.created_at) }}</td>
-        <td class="actions-cell">
-          <a href="/jobs/{{ job.job_id }}">{{ t('dashboard.view_details_btn') }}</a>
-          {% if job.status.value == 'success' %}
-          <a href="/results/?lang={{ lang }}">{{ t('dashboard.view_results_btn') if t('dashboard.view_results_btn') != 'dashboard.view_results_btn' else 'Results' }}</a>
-          <form method="post" action="/jobs/{{ job.job_id }}/open-log" class="inline-open-form">
-            <button type="submit" class="btn-secondary btn-sm">{{ t('dashboard.open_file_btn') }}</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      <tr class="job-expand-row">
-        <td colspan="4">
-          <details class="job-expand-details" data-job-id="{{ job.job_id }}">
-            <summary>{{ t('dashboard.show_more') if t('dashboard.show_more') != 'dashboard.show_more' else 'Show details' }}</summary>
-            <div class="job-expand-content">
-              <div><strong>{{ t('dashboard.jobs_col_language') if t('dashboard.jobs_col_language') != 'dashboard.jobs_col_language' else 'Language' }}:</strong> {{ job.detected_language or '-' }}</div>
-              <div><strong>{{ t('dashboard.jobs_col_reason') if t('dashboard.jobs_col_reason') != 'dashboard.jobs_col_reason' else 'Fail reason' }}:</strong> <span class="reason-cell-inline">{{ job.error_message or '-' }}</span></div>
-              <div>
-                <strong>{{ t('dashboard.jobs_col_command') if t('dashboard.jobs_col_command') != 'dashboard.jobs_col_command' else 'Command' }}:</strong>
-                <details class="command-details">
-                  <summary class="mono">{{ (job.command[:72] ~ '...') if (job.command|length > 72) else job.command }}</summary>
-                  <div class="mono command-full">{{ job.command }}</div>
-                </details>
-              </div>
-            </div>
-          </details>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="job-list">
+  {% for job in jobs %}
+  <div class="job-item job-item-{{ job.status.value }}" data-job-id="{{ job.job_id }}" data-job-status="{{ job.status.value }}">
+    <div class="job-item-header">
+      <div class="job-item-title">
+        <span class="job-item-name">{{ job.name }}</span>
+        {% if job.detected_language %}
+        <span class="job-item-lang">{{ job.detected_language }}</span>
+        {% endif %}
+      </div>
+      <span class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ status_map[job.status.value] }}</span>
+    </div>
+
+    {% if job.project_path %}
+    <div class="job-item-path mono">{{ job.project_path }}</div>
+    {% endif %}
+
+    {% if job.status.value in ('pending', 'running') %}
+    <div class="progress-bar progress-bar-indeterminate" style="margin-top:8px;">
+      <div class="progress-bar-fill"></div>
+    </div>
+    {% endif %}
+
+    {% if job.error_message %}
+    <div class="job-item-error">{{ job.error_message }}</div>
+    {% endif %}
+
+    <div class="job-item-footer">
+      <span class="job-item-time">{{ fmt_dt(job.created_at) }}</span>
+      <div class="job-item-actions">
+        {% if job.status.value in ('success', 'failed') %}
+        <a href="/jobs/{{ job.job_id }}?lang={{ lang }}" class="job-item-link">{{ t('dashboard.view_results_btn') }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
 </div>
+
+<!-- Pagination -->
+{% if total_pages is defined and total_pages > 1 %}
+<div class="pagination">
+  <span class="pagination-info">{{ total }} {{ t('dashboard.pagination_total') }} &middot; {{ t('dashboard.pagination_page') }} {{ page }}/{{ total_pages }}</span>
+  <div class="pagination-buttons">
+    {% if page > 1 %}
+    <button class="btn-secondary btn-sm" onclick="goToPage({{ page - 1 }})">&#8592; {{ t('dashboard.pagination_prev') }}</button>
+    {% endif %}
+    {% if page < total_pages %}
+    <button class="btn-secondary btn-sm" onclick="goToPage({{ page + 1 }})">{{ t('dashboard.pagination_next') }} &#8594;</button>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% else %}
-<p>{{ t('dashboard.jobs_empty') }}</p>
+<div class="empty-state">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <p>{{ t('dashboard.jobs_empty') }}</p>
+</div>
 {% endif %}
