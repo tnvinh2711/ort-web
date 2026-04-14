@@ -187,7 +187,38 @@ async def install_ort_local(
             extract_dir.mkdir(parents=True, exist_ok=True)
 
             await log("Downloading ORT release archive...")
-            await asyncio.to_thread(urllib.request.urlretrieve, download_url, archive_path)
+            loop = asyncio.get_running_loop()
+
+            def _download_with_progress() -> None:
+                req = urllib.request.Request(
+                    download_url, headers={"User-Agent": "ort-web-installer"}
+                )
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    total = int(resp.headers.get("Content-Length") or 0)
+                    downloaded = 0
+                    last_pct = -1
+                    with archive_path.open("wb") as f:
+                        while True:
+                            chunk = resp.read(512 * 1024)  # 512KB chunks, each has 60s timeout
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total > 0:
+                                pct = int(downloaded * 100 / total)
+                                if pct // 10 != last_pct // 10:
+                                    last_pct = pct
+                                    mb = downloaded // (1024 * 1024)
+                                    total_mb = total // (1024 * 1024)
+                                    msg = f"Downloading... {pct}% ({mb}/{total_mb} MB)\n"
+                                    with log_file.open("a", encoding="utf-8") as out:
+                                        out.write(msg)
+                                    asyncio.run_coroutine_threadsafe(
+                                        log_stream_hub.publish(job_id, {"type": "log", "line": msg}),
+                                        loop,
+                                    )
+
+            await asyncio.to_thread(_download_with_progress)
 
             await log("Extracting archive...")
             await asyncio.to_thread(_extract_archive, archive_path, extract_dir)

@@ -291,6 +291,13 @@
             else if (st === 'failed') { src.close(); onInstallFailed(); }
           } catch (_) {}
         });
+        src.addEventListener('log', function(ev) {
+          try {
+            var d = JSON.parse(ev.data);
+            var line = (d.line || '').replace(/^\[.*?\]\s*/, '').trim();
+            if (line) statusText.textContent = line;
+          } catch (_) {}
+        });
 
         // Polling fallback: if SSE drops mid-install, keep checking disk
         src.onerror = function() {
