@@ -85,24 +85,10 @@
       <br/>{{ t('dashboard.auto_config_note') }}
     </div>
 
-    <label>{{ t('dashboard.command_select') }}</label>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:6px;">
-      <button type="submit" name="command" value="analyze" class="btn-primary">
-        {{ t('dashboard.cmd_analyze') }}
-      </button>
-      <button type="submit" name="command" value="scan" class="btn-primary">
-        {{ t('dashboard.cmd_scan') }}
-      </button>
-      <button type="submit" name="command" value="evaluate" class="btn-primary">
-        {{ t('dashboard.cmd_evaluate') }}
-      </button>
-      <button type="submit" name="command" value="advise" class="btn-primary">
-        {{ t('dashboard.cmd_advise') }}
-      </button>
-      <button type="submit" name="command" value="report" class="btn-primary">
-        {{ t('dashboard.cmd_report') }}
-      </button>
-    </div>
+    <input type="hidden" name="command" value="analyze" />
+    <button type="submit" class="btn-primary" style="margin-top:4px;">
+      {{ t('dashboard.cmd_analyze') }}
+    </button>
   </form>
   
   <script>

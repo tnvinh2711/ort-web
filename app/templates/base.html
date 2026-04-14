@@ -21,10 +21,6 @@
       <span class="header-sep"></span>
       <nav>
         <a href="/?lang={{ lang }}" class="nav-link{% if request.url.path == '/' %} active{% endif %}">{{ t('nav.dashboard') }}</a>
-        <a href="/setup/?lang={{ lang }}" class="nav-link{% if '/setup' in request.url.path %} active{% endif %}">{{ t('nav.setup') }}</a>
-        <a href="/results/?lang={{ lang }}" class="nav-link{% if '/results' in request.url.path %} active{% endif %}">{{ t('nav.results') }}</a>
-        <a href="/tools/?lang={{ lang }}" class="nav-link{% if '/tools' in request.url.path %} active{% endif %}">{{ t('nav.tools') }}</a>
-        <a href="/plugins/?lang={{ lang }}" class="nav-link{% if '/plugins' in request.url.path %} active{% endif %}">{{ t('nav.plugins') }}</a>
       </nav>
     </div>
     <div class="header-right">

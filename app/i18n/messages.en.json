@@ -24,7 +24,7 @@
   "dashboard.project_analysis": "Project Analysis",
   "dashboard.project_analysis_help": "Select a project folder and run ORT commands for source code analysis and reporting.",
   "dashboard.project_path": "Project directory",
-  "dashboard.pick_folder_btn": "Pick folder",
+  "dashboard.pick_folder_btn": "Folder",
   "dashboard.language_select": "Programming language",
   "dashboard.auto_detect": "Auto-detect",
   "dashboard.detect_btn": "Detect",
