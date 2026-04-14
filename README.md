@@ -6,6 +6,12 @@ Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolk
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+## Screenshots
+
+| Dashboard | Job History | Job Detail |
+|-----------|-------------|------------|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Job History](docs/screenshots/job-history.png) | ![Job Detail](docs/screenshots/job-detail.png) |
+
 ## Features
 
 - **One-click ORT install** — download and install ORT directly from the UI
@@ -28,7 +34,7 @@ Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolk
 For Python project analysis, also install:
 
 ```bash
-pip install python-inspector setuptools
+pip3 install python-inspector setuptools
 ```
 
 ---
@@ -42,7 +48,7 @@ git clone https://github.com/tnvinh2711/ort-web.git
 cd ort-web
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip3 install -e .
 ```
 
 Create a global symlink so `ort-web` works from anywhere:
@@ -62,7 +68,7 @@ git clone https://github.com/tnvinh2711/ort-web.git
 cd ort-web
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip3 install -e .
 ```
 
 Create a global symlink:
@@ -92,7 +98,7 @@ git clone https://github.com/tnvinh2711/ort-web.git
 cd ort-web
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e .
+pip3 install -e .
 ```
 
 Run without activating venv using the included launcher:
