@@ -13,30 +13,28 @@
 
 <!-- ORT Status Section -->
 <section class="panel">
-  <h2>{{ t('dashboard.ort_status') }}</h2>
+  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+    <h2 style="margin:0;">{{ t('dashboard.ort_status') }}</h2>
+    {% if ort_path %}
+      <span class="status-pill status-pill-success">{{ t('dashboard.ort_installed') }}</span>
+    {% else %}
+      <span class="status-pill status-pill-failed">{{ t('dashboard.ort_not_installed') }}</span>
+    {% endif %}
+  </div>
+
   {% if ort_path %}
-    <div class="alert-success">
-      <strong>{{ t('dashboard.ort_installed') }}</strong><br/>
-      <code>{{ ort_path }}</code>
-    </div>
+    <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);"><code>{{ ort_path }}</code></p>
   {% else %}
-    <div class="alert-warning">
-      <strong>{{ t('dashboard.ort_not_installed') }}</strong><br/>
-      {{ t('dashboard.ort_install_prompt') }}
-    </div>
+    <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">{{ t('dashboard.ort_install_prompt') }}</p>
+    <form method="post" action="/jobs/install-ort" style="margin-top:12px;">
+      <input type="hidden" name="language" value="{{ lang }}" />
+      <div class="row-input">
+        <input id="installDir" name="install_dir" placeholder="{{ t('dashboard.install_dir_placeholder') }}" style="flex:1;" />
+        <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">Folder</button>
+        <button type="submit" class="btn-primary">{{ t('dashboard.install_ort_btn') }}</button>
+      </div>
+    </form>
   {% endif %}
-  
-  <form method="post" action="/jobs/install-ort" class="inline-form" style="margin-top:12px;">
-    <input type="hidden" name="language" value="{{ lang }}" />
-    <label>{{ t('dashboard.install_dir') }}</label>
-    <div class="row-input">
-      <input id="installDir" name="install_dir" placeholder="{{ t('dashboard.install_dir_placeholder') }}" />
-      <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">
-        {{ t('dashboard.pick_folder_btn') }}
-      </button>
-    </div>
-    <button type="submit">{{ t('dashboard.install_ort_btn') }}</button>
-  </form>
 </section>
 
 <!-- Project Analysis Section -->

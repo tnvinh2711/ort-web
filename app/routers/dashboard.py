@@ -376,7 +376,7 @@ async def analyze_project(
     
     job = Job(
         job_id=job_id,
-        name=f"ORT {command.title()} {job_id[:8]}",
+        name=f"ORT {command.title()} {Path(project_path).name}",
         command=ort_command,
         work_dir=str(work_dir),
         language=ui_language,
