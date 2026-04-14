@@ -61,6 +61,7 @@ def job_detail(request: Request, job_id: str):
 
     artifact_files = _collect_artifact_files(run_dir=job_id)
 
+    is_htmx = request.headers.get("HX-Request")
     return templates.TemplateResponse(
         request,
         "jobs/detail.html",
@@ -72,6 +73,7 @@ def job_detail(request: Request, job_id: str):
             "job": job,
             "log_text": log_text,
             "artifact_files": artifact_files,
+            "base_template": "base_partial.html" if is_htmx else "base.html",
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),

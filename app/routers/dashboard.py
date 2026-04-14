@@ -117,6 +117,10 @@ def _shell(value: str | Path) -> str:
     return shlex.quote(str(value))
 
 
+def _base_tpl(request: Request) -> str:
+    return "base_partial.html" if request.headers.get("HX-Request") else "base.html"
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     lang = _lang(request)
@@ -147,6 +151,7 @@ def home(request: Request) -> HTMLResponse:
             "total_jobs": total_jobs,
             "success_jobs": success_jobs,
             "failed_jobs": failed_jobs,
+            "base_template": _base_tpl(request),
         },
     )
     response.set_cookie("lang", lang)

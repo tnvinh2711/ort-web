@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends base_template %}
 {% block content %}
 <section class="hero">
   <h1>{{ t('nav.history') }}</h1>
@@ -63,10 +63,38 @@
     var dateFrom = document.getElementById('jobs-filter-date-from');
     var dateTo = document.getElementById('jobs-filter-date-to');
 
+    // Restore filter state from sessionStorage
+    (function() {
+      var saved = JSON.parse(sessionStorage.getItem('ort_history_filters') || '{}');
+      if (saved.q) document.getElementById('jobs-filter-q').value = saved.q;
+      if (saved.status) document.getElementById('jobs-filter-status').value = saved.status;
+      if (saved.language) document.getElementById('jobs-filter-language').value = saved.language;
+      if (saved.time) {
+        timeSelect.value = saved.time;
+        if (saved.time === 'custom') {
+          customRange.style.display = '';
+          if (saved.date_from) dateFrom.value = saved.date_from;
+          if (saved.date_to) dateTo.value = saved.date_to;
+        }
+      }
+    })();
+
+    function saveFilters() {
+      sessionStorage.setItem('ort_history_filters', JSON.stringify({
+        q: document.getElementById('jobs-filter-q').value,
+        status: document.getElementById('jobs-filter-status').value,
+        language: document.getElementById('jobs-filter-language').value,
+        time: timeSelect.value,
+        date_from: dateFrom.value,
+        date_to: dateTo.value,
+      }));
+    }
+
     timeSelect.addEventListener('change', function() {
       var val = timeSelect.value;
       if (val === 'custom') {
         customRange.style.display = '';
+        saveFilters();
         return;
       }
       customRange.style.display = 'none';
@@ -80,21 +108,24 @@
         dateTo.value = '';
       }
       document.getElementById('jobs-filter-page').value = '1';
+      saveFilters();
       htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
     });
 
     dateFrom.addEventListener('change', function() {
       document.getElementById('jobs-filter-page').value = '1';
+      saveFilters();
       htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
     });
     dateTo.addEventListener('change', function() {
       document.getElementById('jobs-filter-page').value = '1';
+      saveFilters();
       htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
     });
 
     document.querySelectorAll('#jobs-filter-q, #jobs-filter-status, #jobs-filter-language').forEach(function(el) {
-      el.addEventListener('change', function() { document.getElementById('jobs-filter-page').value = '1'; });
-      el.addEventListener('keyup', function() { document.getElementById('jobs-filter-page').value = '1'; });
+      el.addEventListener('change', function() { document.getElementById('jobs-filter-page').value = '1'; saveFilters(); });
+      el.addEventListener('keyup', function() { document.getElementById('jobs-filter-page').value = '1'; saveFilters(); });
     });
 
     function goToPage(p) {

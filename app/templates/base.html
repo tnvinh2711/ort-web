@@ -20,12 +20,24 @@
         <span>ORT Web</span>
       </a>
 
-      <nav class="sidebar-nav">
-        <a href="/?lang={{ lang }}" class="sidebar-link{% if request.url.path == '/' %} active{% endif %}">
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <a href="/?lang={{ lang }}"
+           hx-get="/?lang={{ lang }}"
+           hx-target="#page-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           data-path="/"
+           class="sidebar-link{% if request.url.path == '/' %} active{% endif %}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           {{ t('nav.dashboard') }}
         </a>
-        <a href="/results/?lang={{ lang }}" class="sidebar-link{% if request.url.path.startswith('/results') %} active{% endif %}">
+        <a href="/results/?lang={{ lang }}"
+           hx-get="/results/?lang={{ lang }}"
+           hx-target="#page-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           data-path="/results/"
+           class="sidebar-link{% if request.url.path.startswith('/results') %} active{% endif %}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           {{ t('nav.history') }}
         </a>
@@ -57,9 +69,26 @@
 
   <!-- Main content -->
   <main class="main-content">
-    <div class="container">
+    <div class="container" id="page-content">
       {% block content %}{% endblock %}
     </div>
   </main>
+
+<script>
+  // Update active sidebar link after HTMX navigation
+  document.body.addEventListener('htmx:afterSettle', function() {
+    var path = window.location.pathname;
+    document.querySelectorAll('#sidebar-nav .sidebar-link').forEach(function(a) {
+      var ap = a.getAttribute('data-path') || '';
+      var isActive = ap === '/' ? path === '/' : path.startsWith(ap);
+      a.classList.toggle('active', isActive);
+    });
+    // Restore job panel on dashboard navigation
+    if (path === '/' && !document.getElementById('active-job-panel')) {
+      var jobId = localStorage.getItem('ort_active_job');
+      if (jobId && typeof loadJobPanel === 'function') loadJobPanel(jobId, false);
+    }
+  });
+</script>
 </body>
 </html>

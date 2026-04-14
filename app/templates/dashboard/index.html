@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends base_template %}
 {% block content %}
 <section class="hero">
   <h1>{{ t('hero.title') }}</h1>
@@ -159,13 +159,13 @@
     }
   }
 
-  // Restore active job panel on page load (survives navigation)
-  document.addEventListener('DOMContentLoaded', function() {
+  // Restore active job panel — runs on both full load and HTMX navigation
+  (function() {
     var jobId = localStorage.getItem('ort_active_job');
     if (jobId && !document.getElementById('active-job-panel')) {
       loadJobPanel(jobId, false);
     }
-  });
+  })();
 
   async function pickDirectoryInto(targetInputId) {
     try {

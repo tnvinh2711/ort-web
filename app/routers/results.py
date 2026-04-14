@@ -94,6 +94,7 @@ def results_page(request: Request) -> HTMLResponse:
     if not artifact_files and not show_all:
         artifact_files = _collect_artifact_files(run_dir=None)
 
+    is_htmx = request.headers.get("HX-Request")
     return templates.TemplateResponse(
         request,
         "results/index.html",
@@ -105,6 +106,7 @@ def results_page(request: Request) -> HTMLResponse:
             "artifact_files": artifact_files,
             "latest_run_dir": latest_run_dir,
             "show_all": show_all,
+            "base_template": "base_partial.html" if is_htmx else "base.html",
         },
     )
 
