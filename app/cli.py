@@ -65,13 +65,15 @@ def cmd_open(args: argparse.Namespace) -> None:
 
 def _fetch_latest_tag() -> str | None:
     """Fetch latest tag from GitHub API."""
+    import ssl
     try:
+        ctx = ssl.create_default_context()
         req = Request(API_TAGS_URL, headers={"User-Agent": "ort-web-cli"})
-        with urlopen(req, timeout=10) as resp:
+        with urlopen(req, timeout=10, context=ctx) as resp:
             tags = json.loads(resp.read().decode())
         if tags:
             return tags[0]["name"]
-    except (URLError, json.JSONDecodeError, KeyError, IndexError):
+    except (URLError, json.JSONDecodeError, KeyError, IndexError, ssl.SSLError):
         pass
     return None
 
