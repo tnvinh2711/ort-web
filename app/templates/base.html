@@ -83,10 +83,15 @@
       var isActive = ap === '/' ? path === '/' : path.startsWith(ap);
       a.classList.toggle('active', isActive);
     });
-    // Restore job panel on dashboard navigation
-    if (path === '/' && !document.getElementById('active-job-panel')) {
-      var jobId = localStorage.getItem('ort_active_job');
-      if (jobId && typeof loadJobPanel === 'function') loadJobPanel(jobId, false);
+    // Restore job panel on dashboard navigation.
+    // Defer slightly so the dashboard IIFE runs first (it sets _panelLoading).
+    if (path === '/') {
+      setTimeout(function() {
+        if (!document.getElementById('active-job-panel')) {
+          var jobId = localStorage.getItem('ort_active_job');
+          if (jobId && typeof loadJobPanel === 'function') loadJobPanel(jobId, false);
+        }
+      }, 0);
     }
   });
 </script>

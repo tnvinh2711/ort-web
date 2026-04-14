@@ -55,6 +55,7 @@
     hx-include="#jobs-filter-form"
     hx-trigger="load, refresh-jobs, keyup changed delay:300ms from:#jobs-filter-q, change from:#jobs-filter-status, change from:#jobs-filter-language"
     hx-swap="innerHTML"
+    hx-on::after-settle="scheduleJobsPoll()"
   ></div>
 
   <script>
@@ -133,19 +134,23 @@
       htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
     }
 
-    // After each jobs list swap, schedule next poll if any job is still running
+    // After each jobs list swap, schedule next poll if any job is still running.
+    // Uses a single timer reference to prevent multiple concurrent timers
+    // (important: this function is called via hx-on::after-settle on the element,
+    //  NOT via document.body listener — avoids listener accumulation on SPA nav).
+    var _jobsPollTimer = null;
     function scheduleJobsPoll() {
+      if (_jobsPollTimer) return;
       var container = document.getElementById('jobs-container');
       if (!container) return;
       if (container.querySelector('[data-job-status="running"],[data-job-status="pending"]')) {
-        setTimeout(function() {
-          htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+        _jobsPollTimer = setTimeout(function() {
+          _jobsPollTimer = null;
+          var c = document.getElementById('jobs-container');
+          if (c) htmx.trigger(c, 'refresh-jobs');
         }, 5000);
       }
     }
-    document.body.addEventListener('htmx:afterSettle', function(evt) {
-      if (evt.target && evt.target.id === 'jobs-container') scheduleJobsPoll();
-    });
   </script>
 </section>
 {% endblock %}
