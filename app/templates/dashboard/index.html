@@ -132,9 +132,13 @@
 <div id="job-panel-container"></div>
 
 <script>
+  var _panelLoading = false;
+
   async function loadJobPanel(jobId, scroll) {
+    if (_panelLoading) return;
     var container = document.getElementById('job-panel-container');
     if (!container) return;
+    _panelLoading = true;
     try {
       var resp = await fetch('/jobs/' + jobId + '/panel?lang={{ lang }}');
       if (!resp.ok) { localStorage.removeItem('ort_active_job'); return; }
@@ -150,13 +154,17 @@
     } catch (err) {
       console.error(err);
       localStorage.removeItem('ort_active_job');
+    } finally {
+      _panelLoading = false;
     }
   }
 
   // Restore active job panel on page load (survives navigation)
   document.addEventListener('DOMContentLoaded', function() {
     var jobId = localStorage.getItem('ort_active_job');
-    if (jobId) loadJobPanel(jobId, false);
+    if (jobId && !document.getElementById('active-job-panel')) {
+      loadJobPanel(jobId, false);
+    }
   });
 
   async function pickDirectoryInto(targetInputId) {
