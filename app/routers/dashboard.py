@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -22,7 +23,14 @@ from app.services.ort_properties import auto_generate_ort_properties, get_manage
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
+# Cache ORT detection result — running `ort --version` starts the JVM (2-5 s).
+# Recheck at most every 2 minutes; invalidated explicitly after install.
+_ort_cache: dict = {"path": None, "at": 0.0, "valid": False}
+_ORT_CACHE_TTL = 120.0  # seconds
 
+
+def _invalidate_ort_cache() -> None:
+    _ort_cache["valid"] = False
 
 
 def _is_ort_install_healthy(binary_path: Path) -> bool:
@@ -42,7 +50,15 @@ def _is_ort_install_healthy(binary_path: Path) -> bool:
 
 
 def _detect_ort_on_disk() -> str | None:
-    """Check known locations for a working ORT binary, independent of job history."""
+    """Check known locations for a working ORT binary, independent of job history.
+
+    Result is cached for _ORT_CACHE_TTL seconds because launching `ort --version`
+    starts the JVM and can take 2-5 seconds per candidate path.
+    """
+    now = time.monotonic()
+    if _ort_cache["valid"] and (now - _ort_cache["at"]) < _ORT_CACHE_TTL:
+        return _ort_cache["path"]
+
     import shutil as _shutil
 
     # Candidate paths: default install dir, runtime bin dir, PATH
@@ -61,10 +77,14 @@ def _detect_ort_on_disk() -> str | None:
     if which_ort:
         candidates.append(Path(which_ort))
 
+    found: str | None = None
     for path in candidates:
         if _is_ort_install_healthy(path):
-            return str(path)
-    return None
+            found = str(path)
+            break
+
+    _ort_cache.update({"path": found, "at": now, "valid": True})
+    return found
 
 
 @router.get("/api/ort-status")
@@ -240,6 +260,9 @@ async def install_ort(
 
     if existing_path:
         return JSONResponse({"already_installed": True, "path": existing_path})
+
+    # Invalidate cache so the post-install status check re-probes disk.
+    _invalidate_ort_cache()
 
     job_id = uuid4().hex
     log_file = settings.logs_dir / f"{job_id}.log"

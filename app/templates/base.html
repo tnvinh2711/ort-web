@@ -15,29 +15,23 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-top">
-      <a class="sidebar-brand" href="/?lang={{ lang }}">
+      <a class="sidebar-brand" href="#" onclick="switchTab('dashboard'); return false;">
         <svg class="sidebar-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         <span>ORT Web</span>
       </a>
 
       <nav class="sidebar-nav" id="sidebar-nav">
-        <a href="/?lang={{ lang }}"
-           hx-get="/?lang={{ lang }}"
-           hx-target="#page-content"
-           hx-swap="innerHTML"
-           hx-push-url="true"
-           data-path="/"
-           class="sidebar-link{% if request.url.path == '/' %} active{% endif %}">
+        <a href="/"
+           data-tab="dashboard"
+           onclick="switchTab('dashboard'); return false;"
+           class="sidebar-link">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           {{ t('nav.dashboard') }}
         </a>
-        <a href="/results/?lang={{ lang }}"
-           hx-get="/results/?lang={{ lang }}"
-           hx-target="#page-content"
-           hx-swap="innerHTML"
-           hx-push-url="true"
-           data-path="/results/"
-           class="sidebar-link{% if request.url.path.startswith('/results') %} active{% endif %}">
+        <a href="/results/"
+           data-tab="history"
+           onclick="switchTab('history'); return false;"
+           class="sidebar-link">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           {{ t('nav.history') }}
         </a>
@@ -46,8 +40,8 @@
 
     <div class="sidebar-bottom">
       <div class="lang-switch">
-        <a href="{{ request.url.path }}?lang=vi" class="lang-btn{% if lang == 'vi' %} lang-active{% endif %}">VI</a>
-        <a href="{{ request.url.path }}?lang=en" class="lang-btn{% if lang == 'en' %} lang-active{% endif %}">EN</a>
+        <a href="#" onclick="setLang('vi'); return false;" class="lang-btn{% if lang == 'vi' %} lang-active{% endif %}">VI</a>
+        <a href="#" onclick="setLang('en'); return false;" class="lang-btn{% if lang == 'en' %} lang-active{% endif %}">EN</a>
       </div>
     </div>
   </aside>
@@ -57,41 +51,124 @@
     <button class="mobile-menu-btn" onclick="document.body.classList.toggle('sidebar-open')" aria-label="Toggle menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
-    <a class="mobile-brand" href="/?lang={{ lang }}">ORT Web</a>
+    <a class="mobile-brand" href="#" onclick="switchTab('dashboard'); return false;">ORT Web</a>
     <div class="lang-switch">
-      <a href="{{ request.url.path }}?lang=vi" class="lang-btn{% if lang == 'vi' %} lang-active{% endif %}">VI</a>
-      <a href="{{ request.url.path }}?lang=en" class="lang-btn{% if lang == 'en' %} lang-active{% endif %}">EN</a>
+      <a href="#" onclick="setLang('vi'); return false;" class="lang-btn{% if lang == 'vi' %} lang-active{% endif %}">VI</a>
+      <a href="#" onclick="setLang('en'); return false;" class="lang-btn{% if lang == 'en' %} lang-active{% endif %}">EN</a>
     </div>
   </header>
 
   <!-- Overlay for mobile sidebar -->
   <div class="sidebar-overlay" onclick="document.body.classList.remove('sidebar-open')"></div>
 
-  <!-- Main content -->
+  <!-- Main content: two persistent tab panes, never destroyed after first load -->
   <main class="main-content">
-    <div class="container" id="page-content">
-      {% block content %}{% endblock %}
-    </div>
+    <!-- SSR content (hidden): JS moves this into the correct pane on init -->
+    <div id="ssr-content" style="display:none">{% block content %}{% endblock %}</div>
+
+    <div class="container" id="tab-dashboard" style="display:none"></div>
+    <div class="container" id="tab-history" style="display:none"></div>
   </main>
 
 <script>
-  // Update active sidebar link after HTMX navigation
-  document.body.addEventListener('htmx:afterSettle', function() {
-    var path = window.location.pathname;
-    document.querySelectorAll('#sidebar-nav .sidebar-link').forEach(function(a) {
-      var ap = a.getAttribute('data-path') || '';
-      var isActive = ap === '/' ? path === '/' : path.startsWith(ap);
-      a.classList.toggle('active', isActive);
+  var _lang = '{{ lang }}';
+  // Which tabs have been fully loaded into DOM (content + scripts initialised)
+  var _tabReady = { dashboard: false, history: false };
+  var _currentTab = null;
+
+  function _runScripts(pane) {
+    pane.querySelectorAll('script').forEach(function(s) {
+      var n = document.createElement('script');
+      n.textContent = s.textContent;
+      s.parentNode.replaceChild(n, s);
     });
-    // Restore job panel on dashboard navigation.
-    // Defer slightly so the dashboard IIFE runs first (it sets _panelLoading).
-    if (path === '/') {
-      setTimeout(function() {
-        if (!document.getElementById('active-job-panel')) {
-          var jobId = localStorage.getItem('ort_active_job');
-          if (jobId && typeof loadJobPanel === 'function') loadJobPanel(jobId, false);
-        }
-      }, 0);
+  }
+
+  function _setActiveLink(name) {
+    document.querySelectorAll('#sidebar-nav .sidebar-link').forEach(function(a) {
+      a.classList.toggle('active', a.getAttribute('data-tab') === name);
+    });
+  }
+
+  // Switch to a tab — instant if already loaded, one-time fetch otherwise.
+  function switchTab(name) {
+    if (_currentTab === name && _tabReady[name]) return;
+    _currentTab = name;
+
+    var other = name === 'dashboard' ? 'history' : 'dashboard';
+    document.getElementById('tab-' + other).style.display = 'none';
+    document.getElementById('tab-' + name).style.display = '';
+
+    _setActiveLink(name);
+    history.pushState({ tab: name }, '', name === 'dashboard' ? '/' : '/results/');
+
+    document.body.classList.remove('sidebar-open');
+
+    if (_tabReady[name]) {
+      // Already in DOM — just restore job panel if returning to dashboard
+      if (name === 'dashboard') {
+        setTimeout(function() {
+          if (!document.getElementById('active-job-panel')) {
+            var jid = localStorage.getItem('ort_active_job');
+            if (jid && typeof loadJobPanel === 'function') loadJobPanel(jid, false);
+          }
+        }, 0);
+      }
+      return;
+    }
+
+    // First visit: fetch partial content (HX-Request triggers base_partial.html)
+    _tabReady[name] = true;
+    var pane = document.getElementById('tab-' + name);
+    var url = (name === 'dashboard' ? '/' : '/results/') + '?lang=' + _lang;
+    fetch(url, { headers: { 'HX-Request': '1' } })
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        pane.innerHTML = html;
+        htmx.process(pane);
+        _runScripts(pane);
+      });
+  }
+
+  function setLang(l) {
+    // Full reload to the current tab's URL with new lang
+    var path = (_currentTab === 'history') ? '/results/' : '/';
+    window.location.href = path + '?lang=' + l;
+  }
+
+  // Init: move server-rendered content to the correct pane, no extra fetch needed
+  (function() {
+    var path = window.location.pathname;
+    var name = path.startsWith('/results') ? 'history' : 'dashboard';
+    var pane = document.getElementById('tab-' + name);
+    var ssr = document.getElementById('ssr-content');
+
+    pane.innerHTML = ssr.innerHTML;
+    ssr.remove();
+    htmx.process(pane);
+    _runScripts(pane);
+
+    _tabReady[name] = true;
+    _currentTab = name;
+    pane.style.display = '';
+    _setActiveLink(name);
+  })();
+
+  // Browser back/forward
+  window.addEventListener('popstate', function(e) {
+    var tab = e.state && e.state.tab
+      ? e.state.tab
+      : (window.location.pathname.startsWith('/results') ? 'history' : 'dashboard');
+    // Allow re-show even if same tab (back/fwd should always work)
+    var prev = _currentTab;
+    _currentTab = null;
+    if (tab === prev) {
+      // Just toggle display without pushing state again
+      _currentTab = tab;
+      document.getElementById('tab-' + (tab === 'dashboard' ? 'history' : 'dashboard')).style.display = 'none';
+      document.getElementById('tab-' + tab).style.display = '';
+    } else {
+      switchTab(tab);
     }
   });
 </script>
