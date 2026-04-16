@@ -83,7 +83,7 @@ def _resolve_artifact_path(path_value: str) -> Path:
 
 @router.get("/", response_class=HTMLResponse)
 def results_page(request: Request) -> HTMLResponse:
-    lang = request.query_params.get("lang") or request.cookies.get("lang") or "vi"
+    lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
     show_all = request.query_params.get("scope") == "all"
     base = _artifact_base_dir()
     latest_run_dir = _find_latest_run_dir(base) if base.exists() else None

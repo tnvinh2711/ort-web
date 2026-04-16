@@ -9,7 +9,7 @@ import platform
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "ORT Local Visualizer"
-    default_language: str = "vi"
+    default_language: str = "en"
     runtime_dir: Path = Path("runtime")
     jobs_db_file: str = "jobs.sqlite3"
     max_parallel_jobs: int = 2

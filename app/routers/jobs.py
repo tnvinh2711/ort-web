@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
+from app.config import settings
 from app.i18n import translate
 from app.services.job_store import job_store
 from app.services.log_stream import log_stream_hub
@@ -21,8 +22,8 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 def _lang(request: Request) -> str:
-    lang = request.query_params.get("lang") or request.cookies.get("lang") or "vi"
-    return lang if lang in {"vi", "en"} else "vi"
+    lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
+    return lang if lang in {"vi", "en"} else settings.default_language
 
 
 def _format_datetime(value: str | None) -> str:
