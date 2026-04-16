@@ -62,20 +62,19 @@ flowchart LR
     CO(["Compliance Officer"])
     Ops(["DevOps Engineer"])
 
-    subgraph UC ["Use Cases"]
-        UC1["Install ORT"]
-        UC2["Analyze Project"]
-        UC3["Monitor Logs"]
-        UC4["View Results"]
-        UC5["Download Artifacts"]
-        UC6["Job History"]
-        UC7["Full Pipeline"]
-        UC8["Configure ORT"]
-    end
+    Dev & CO & Ops --> Install["Install ORT"]
 
-    Dev --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6
-    CO --> UC1 & UC7 & UC3 & UC4 & UC6
-    Ops --> UC1 & UC8
+    Dev --> Analyze["Analyze Project"]
+    Dev --> Monitor["Monitor Logs in Real-time"]
+    Dev --> Results["View Results & Download"]
+    Dev --> History["Browse Job History"]
+
+    CO --> Pipeline["Run Full Compliance Pipeline"]
+    CO --> Monitor
+    CO --> History
+
+    Ops --> Configure["Configure Package Managers"]
+    Ops --> GenConfig["Generate ORT Config Files"]
 ```
 
 ---
