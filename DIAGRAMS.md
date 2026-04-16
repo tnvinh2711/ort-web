@@ -21,7 +21,7 @@ graph TB
 ## 2. Functional Decomposition
 
 ```mermaid
-graph TB
+graph LR
     ORT["ORT Web"]
 
     ORT --> A["Installation"]
