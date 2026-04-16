@@ -14,7 +14,6 @@ graph TB
     JobStore --> DB[("SQLite")]
     ORT --> Artifacts["Artifacts"]
     LogHub -->|"SSE"| Browser
-    OrtInst -->|"fetch latest release"| GitHub["GitHub API"]
 ```
 
 ---
