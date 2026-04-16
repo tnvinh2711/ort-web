@@ -56,35 +56,28 @@ graph TB
 
 ## 3. Use Case Diagram
 
-> Mô tả mục tiêu của từng actor khi tương tác với hệ thống. `<<include>>` = use case con bắt buộc phải chạy; `<<extend>>` = use case mở rộng tùy chọn.
-
 ```mermaid
 flowchart LR
     Dev(["Developer"])
     CO(["Compliance Officer"])
     Ops(["DevOps Engineer"])
 
-    subgraph System ["ORT Web System"]
+    subgraph System ["ORT Web"]
         UC1(["Scan Project Dependencies"])
         UC2(["Generate Compliance Report"])
         UC3(["Review Scan Results"])
-        UC4(["Install ORT Tool"])
+        UC4(["Install ORT"])
         UC5(["Configure Scan Environment"])
-        UC6(["Monitor Scan Progress"])
-        UC7(["Download SBOM / Artifacts"])
 
         UC1 -->|"<<include>>"| UC4
-        UC1 -->|"<<include>>"| UC6
         UC2 -->|"<<include>>"| UC1
-        UC3 -->|"<<extend>>"| UC7
+        UC3 -->|"<<extend>>"| UC2
     end
 
     Dev --> UC1
     Dev --> UC3
-
     CO --> UC2
     CO --> UC3
-
     Ops --> UC4
     Ops --> UC5
 ```
