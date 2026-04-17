@@ -3,23 +3,27 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
+from app.models import Job
+from app.services.job_queue import job_queue
 from app.services.job_store import job_store
 from app.services.log_stream import log_stream_hub
+from app.services.vuln_summary import parse_vuln_summary
 from app.routers.results import _collect_artifact_files
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 templates = Jinja2Templates(directory="app/templates")
-
 
 def _lang(request: Request) -> str:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
@@ -74,6 +78,7 @@ def job_detail(request: Request, job_id: str):
             "job": job,
             "log_text": log_text,
             "artifact_files": artifact_files,
+            "vuln_summary": parse_vuln_summary(job_id),
             "base_template": "base_partial.html" if is_htmx else "base.html",
             "status_map": {
                 "pending": translate(lang, "status.pending"),
@@ -110,6 +115,7 @@ def job_inline_panel(request: Request, job_id: str):
             "fmt_dt": _format_datetime,
             "job": job,
             "log_text": log_text,
+            "vuln_summary": parse_vuln_summary(job_id),
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),
@@ -183,6 +189,53 @@ async def job_events(job_id: str) -> StreamingResponse:
             "Connection": "keep-alive",
         },
     )
+
+
+@router.post("/{job_id}/run-advise")
+async def run_advise(job_id: str) -> JSONResponse:
+    """Create and enqueue an advise job from a completed analyze job."""
+    parent = job_store.get_job(job_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if parent.status.value != "success":
+        raise HTTPException(status_code=400, detail="Analyze job has not completed successfully.")
+
+    if "analyze" not in parent.command:
+        raise HTTPException(status_code=400, detail="Job is not an analyze job.")
+
+    # Resolve analyzer-result.yml from the parent job's output dir
+    parent_output_dir = (settings.artifacts_dir / job_id).resolve()
+    analyzer_result = parent_output_dir / "analyzer-result.yml"
+    if not analyzer_result.exists():
+        raise HTTPException(status_code=404, detail="analyzer-result.yml not found for this job.")
+
+    new_job_id = uuid4().hex
+    new_output_dir = (settings.artifacts_dir / new_job_id).resolve()
+    log_file = settings.logs_dir / f"{new_job_id}.log"
+
+    advise_command = (
+        f"ort -P ort.forceOverwrite=true advise "
+        f"-i {shlex.quote(str(analyzer_result))} "
+        f"-o {shlex.quote(str(new_output_dir))} "
+        f"--advisors OSV"
+    )
+
+    project_name = Path(parent.project_path or parent.work_dir).name
+    new_job = Job(
+        job_id=new_job_id,
+        name=f"ORT Advise {project_name}",
+        command=advise_command,
+        work_dir=parent.work_dir,
+        language=parent.language,
+        project_path=parent.project_path,
+        detected_language=parent.detected_language,
+        created_at=Job.now_iso(),
+        log_file=str(log_file),
+    )
+    await job_queue.enqueue(new_job)
+
+    return JSONResponse({"job_id": new_job_id})
 
 
 @router.post("/{job_id}/open-log", response_class=RedirectResponse)

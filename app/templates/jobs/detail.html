@@ -46,6 +46,27 @@
   <div class="alert-warning" style="margin-top:12px;">{{ job.error_message }}</div>
   {% endif %}
 
+  {% if vuln_summary and vuln_summary.total > 0 %}
+  <div style="margin-top:12px; padding:12px 16px; background:var(--danger-light); border:1px solid var(--danger-border); border-radius:var(--radius); display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span style="font-size:16px;">&#9888;</span>
+    <span style="font-weight:600; color:var(--danger); font-size:13px;">{{ t('job.vuln_warning') }} ({{ vuln_summary.total }})</span>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      {% if vuln_summary.critical > 0 %}
+      <span style="padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; background:#fca5a5; color:#7f1d1d;">{{ t('job.vuln_critical') }}: {{ vuln_summary.critical }}</span>
+      {% endif %}
+      {% if vuln_summary.high > 0 %}
+      <span style="padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; background:#fed7aa; color:#92400e;">{{ t('job.vuln_high') }}: {{ vuln_summary.high }}</span>
+      {% endif %}
+      {% if vuln_summary.medium > 0 %}
+      <span style="padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; background:#fde68a; color:#78350f;">{{ t('job.vuln_medium') }}: {{ vuln_summary.medium }}</span>
+      {% endif %}
+      {% if vuln_summary.low > 0 %}
+      <span style="padding:2px 10px; border-radius:12px; font-size:12px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_low') }}: {{ vuln_summary.low }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Progress bar for running jobs -->
   {% if job.status.value in ('pending', 'running') %}
   <div id="job-progress" class="progress-bar progress-bar-indeterminate" style="margin-top:12px;">

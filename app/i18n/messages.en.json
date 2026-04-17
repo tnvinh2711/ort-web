@@ -128,5 +128,14 @@
   "dashboard.installing": "Installing ORT",
   "dashboard.install_done": "ORT installed successfully! Reloading...",
   "dashboard.install_failed": "ORT installation failed. Check log for details.",
-  "dashboard.install_warning": "Please wait while ORT is being installed. Do not close the browser or reload the page."
+  "dashboard.install_warning": "Please wait while ORT is being installed. Do not close the browser or reload the page.",
+  "job.vuln_warning": "Vulnerabilities detected",
+  "job.vuln_critical": "Critical",
+  "job.vuln_high": "High",
+  "job.vuln_medium": "Medium",
+  "job.vuln_low": "Low",
+  "job.run_advisor_btn": "Run Advisor (OSV)",
+  "job.run_advisor_running": "Running Advisor...",
+  "job.run_advisor_no_result": "analyzer-result.yml not found. Run Analyze first.",
+  "job.run_advisor_error": "Failed to start Advisor job."
 }

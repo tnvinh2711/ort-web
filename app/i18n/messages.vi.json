@@ -128,5 +128,14 @@
   "dashboard.installing": "Đang cài đặt ORT",
   "dashboard.install_done": "Cài đặt ORT thành công! Đang tải lại...",
   "dashboard.install_failed": "Cài đặt ORT thất bại. Xem log để biết chi tiết.",
-  "dashboard.install_warning": "Vui lòng đợi quá trình cài đặt ORT hoàn tất. Không tắt trình duyệt hoặc tải lại trang trong lúc cài đặt."
+  "dashboard.install_warning": "Vui lòng đợi quá trình cài đặt ORT hoàn tất. Không tắt trình duyệt hoặc tải lại trang trong lúc cài đặt.",
+  "job.vuln_warning": "Phát hiện lỗ hổng bảo mật",
+  "job.vuln_critical": "Nghiêm trọng",
+  "job.vuln_high": "Cao",
+  "job.vuln_medium": "Trung bình",
+  "job.vuln_low": "Thấp",
+  "job.run_advisor_btn": "Chạy Advisor (OSV)",
+  "job.run_advisor_running": "Đang chạy Advisor...",
+  "job.run_advisor_no_result": "Không tìm thấy analyzer-result.yml. Hãy chạy Analyze trước.",
+  "job.run_advisor_error": "Không thể khởi động job Advisor."
 }

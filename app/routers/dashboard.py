@@ -19,6 +19,7 @@ from app.services.job_store import job_store
 from app.services.language_detector import detect_language, get_language_options
 from app.services.ort_config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
 from app.services.ort_properties import auto_generate_ort_properties, get_managers_for_language
+from app.services.vuln_summary import parse_vuln_summary
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -200,6 +201,12 @@ def jobs_partial(request: Request) -> HTMLResponse:
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
 
+    vuln_summaries = {
+        job.job_id: parse_vuln_summary(job.job_id)
+        for job in jobs
+        if job.status.value == "success"
+    }
+
     return templates.TemplateResponse(
         request,
         "dashboard/jobs_list.html",
@@ -212,6 +219,7 @@ def jobs_partial(request: Request) -> HTMLResponse:
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "vuln_summaries": vuln_summaries,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),

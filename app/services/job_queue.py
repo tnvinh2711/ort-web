@@ -42,38 +42,67 @@ def _extract_failure_reason(log_file: Path) -> str | None:
     return None
 
 
-def _build_followup_report_command(command: str) -> str | None:
+def _extract_output_dir(command: str) -> Path | None:
+    """Extract the -o / --output-dir value from an ORT command string."""
     try:
         tokens = shlex.split(command)
     except Exception:
         return None
-
-    if not tokens or tokens[0] != "ort":
-        return None
-
-    # The "analyze" subcommand can appear after global flags like "-P key=val".
-    if "analyze" not in tokens:
-        return None
-
-    output_dir: str | None = None
     i = 0
     while i < len(tokens):
-        token = tokens[i]
-        if token in {"-o", "--output-dir"} and i + 1 < len(tokens):
-            output_dir = tokens[i + 1]
-            i += 1
-        elif token.startswith("--output-dir="):
-            output_dir = token.split("=", 1)[1]
+        if tokens[i] in {"-o", "--output-dir"} and i + 1 < len(tokens):
+            return Path(tokens[i + 1])
+        if tokens[i].startswith("--output-dir="):
+            return Path(tokens[i].split("=", 1)[1])
         i += 1
+    return None
 
+
+async def _log_info(job_id: str, log_file: Path, message: str) -> None:
+    line = f"[info] {message}\n"
+    with log_file.open("a", encoding="utf-8") as out:
+        out.write(line)
+    await log_stream_hub.publish(job_id, {"type": "log", "line": line})
+
+
+async def _run_post_analyze_pipeline(
+    job_id: str, analyze_command: str, work_dir: str, log_file: Path
+) -> int:
+    """Chain after analyze: advise (OSV) → report. Returns the final exit code."""
+    output_dir = _extract_output_dir(analyze_command)
     if not output_dir:
-        return None
+        return 0
 
-    analyzer_result = Path(output_dir) / "analyzer-result.yml"
-    return (
-        f"ort -P ort.forceOverwrite=true report -i {shlex.quote(str(analyzer_result))} "
-        f"-o {shlex.quote(output_dir)} --report-formats StaticHtml,WebApp"
+    analyzer_result = output_dir / "analyzer-result.yml"
+    advisor_result = output_dir / "advisor-result.yml"
+
+    # Step 1: Advise
+    advise_cmd = (
+        f"ort -P ort.forceOverwrite=true advise "
+        f"-i {shlex.quote(str(analyzer_result))} "
+        f"-o {shlex.quote(str(output_dir))} "
+        f"--advisors OSV"
     )
+    await _log_info(job_id, log_file, "Analyze completed. Running Advisor (OSV)...")
+    advise_exit = await run_ort_command(job_id, advise_cmd, work_dir, log_file)
+
+    # Step 2: Report — use advisor-result when advise succeeded, else fall back to analyzer-result
+    input_result = advisor_result if (advise_exit == 0 and advisor_result.exists()) else analyzer_result
+    report_cmd = (
+        f"ort -P ort.forceOverwrite=true report "
+        f"-i {shlex.quote(str(input_result))} "
+        f"-o {shlex.quote(str(output_dir))} "
+        f"--report-formats StaticHtml,WebApp"
+    )
+    await _log_info(job_id, log_file, f"Generating report from {input_result.name}...")
+    report_exit = await run_ort_command(job_id, report_cmd, work_dir, log_file)
+
+    if report_exit == 0:
+        created = _create_analyzer_html_aliases(output_dir)
+        for alias in created:
+            await _log_info(job_id, log_file, f"Created report alias: {alias.name}")
+
+    return report_exit
 
 
 def _create_analyzer_html_aliases(output_dir: Path) -> list[Path]:
@@ -161,42 +190,10 @@ class JobQueue:
                     job.ort_install_path = ort_path
             else:
                 exit_code = await run_ort_command(job.job_id, job.command, job.work_dir, log_file)
-                if exit_code == 0:
-                    followup_report_command = _build_followup_report_command(job.command)
-                    if followup_report_command:
-                        with log_file.open("a", encoding="utf-8") as out:
-                            out.write("\n[info] Analyze completed. Running follow-up report to generate HTML outputs...\n")
-                        await log_stream_hub.publish(
-                            job.job_id,
-                            {
-                                "type": "log",
-                                "line": "[info] Analyze completed. Running follow-up report to generate HTML outputs...\n",
-                            },
-                        )
-                        exit_code = await run_ort_command(job.job_id, followup_report_command, job.work_dir, log_file)
-                        if exit_code == 0:
-                            output_dir: Path | None = None
-                            tokens = shlex.split(job.command)
-                            for i, token in enumerate(tokens):
-                                if token in {"-o", "--output-dir"} and i + 1 < len(tokens):
-                                    output_dir = Path(tokens[i + 1])
-                                elif token.startswith("--output-dir="):
-                                    output_dir = Path(token.split("=", 1)[1])
-
-                            if output_dir:
-                                created_aliases = _create_analyzer_html_aliases(output_dir)
-                                if created_aliases:
-                                    with log_file.open("a", encoding="utf-8") as out:
-                                        for alias in created_aliases:
-                                            out.write(f"[info] Created analyzer HTML alias: {alias}\n")
-                                    for alias in created_aliases:
-                                        await log_stream_hub.publish(
-                                            job.job_id,
-                                            {
-                                                "type": "log",
-                                                "line": f"[info] Created analyzer HTML alias: {alias}\n",
-                                            },
-                                        )
+                if exit_code == 0 and "analyze" in shlex.split(job.command):
+                    exit_code = await _run_post_analyze_pipeline(
+                        job.job_id, job.command, job.work_dir, log_file
+                    )
             job.exit_code = exit_code
             job.status = JobStatus.SUCCESS if exit_code == 0 else JobStatus.FAILED
             if job.status == JobStatus.FAILED and not job.error_message:

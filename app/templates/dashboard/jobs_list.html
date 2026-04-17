@@ -26,6 +26,18 @@
     <div class="job-item-error">{{ job.error_message }}</div>
     {% endif %}
 
+    {% set vs = vuln_summaries.get(job.job_id) if vuln_summaries is defined else none %}
+    {% if vs and vs.total > 0 %}
+    <div style="margin-top:8px; padding:6px 10px; background:var(--danger-light); border:1px solid var(--danger-border); border-radius:var(--radius); display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+      <span>&#9888;</span>
+      <span style="font-weight:600; color:var(--danger);">{{ t('job.vuln_warning') }} ({{ vs.total }})</span>
+      {% if vs.critical > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fca5a5; color:#7f1d1d;">{{ t('job.vuln_critical') }}: {{ vs.critical }}</span>{% endif %}
+      {% if vs.high > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fed7aa; color:#92400e;">{{ t('job.vuln_high') }}: {{ vs.high }}</span>{% endif %}
+      {% if vs.medium > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fde68a; color:#78350f;">{{ t('job.vuln_medium') }}: {{ vs.medium }}</span>{% endif %}
+      {% if vs.low > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_low') }}: {{ vs.low }}</span>{% endif %}
+    </div>
+    {% endif %}
+
     <div class="job-item-footer">
       <span class="job-item-time">{{ fmt_dt(job.created_at) }}</span>
       <div class="job-item-actions">
