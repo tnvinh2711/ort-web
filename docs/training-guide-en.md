@@ -15,11 +15,10 @@
 7. [Understanding Analysis Results](#7-understanding-analysis-results)
 8. [Job History & Filtering](#8-job-history--filtering)
 9. [Viewing & Downloading Reports](#9-viewing--downloading-reports)
-10. [Reference Pages](#10-reference-pages)
-11. [Switching Languages](#11-switching-languages)
-12. [Updating ORT Web](#12-updating-ort-web)
-13. [Common Issues & Troubleshooting](#13-common-issues--troubleshooting)
-14. [FAQ](#14-faq)
+10. [Switching Languages](#10-switching-languages)
+11. [Updating ORT Web](#11-updating-ort-web)
+12. [Common Issues & Troubleshooting](#12-common-issues--troubleshooting)
+13. [FAQ](#13-faq)
 
 ---
 
@@ -143,10 +142,10 @@ When you open ORT Web, you land on the **Dashboard** — the main control center
 │  ─────────                │  ─────────────                  │
 │  Dashboard            ←   │  [KPI Cards]                    │
 │  Job History              │  Total Jobs | Success | Failed  │
-│  Setup Guide              │                                  │
-│  ORT Commands             │  [ORT Status]                   │
-│  ORT Tools                │  ✅ ORT is installed / ⚠️ Not   │
-│  ORT Plugins              │                                  │
+│                           │                                  │
+│                           │  [ORT Status]                   │
+│                           │  ✅ ORT is installed / ⚠️ Not   │
+│                           │                                  │
 │                           │  [Install ORT] (if not ready)   │
 │                           │                                  │
 │                           │  [Analyze Project]              │
@@ -394,38 +393,7 @@ The Job Detail page shows:
 
 ---
 
-## 10. Reference Pages
-
-ORT Web includes built-in reference documentation pages — accessible from the left sidebar.
-
-### Setup Guide (`/setup/`)
-
-Shows:
-- How ORT was detected and configured on your system
-- Package manager detection results
-- Configuration file locations (`~/.ort/config.yml`, `~/.ort/ort.properties`)
-- Tips for common package manager setups
-
-### ORT Commands (`/commands/`)
-
-Reference for all available ORT CLI commands:
-- `analyze` — scan dependencies
-- `advise` — check vulnerabilities
-- `report` — generate reports
-- `evaluate` — run policy rules
-- `download` — download source code
-
-### ORT Tools (`/tools/`)
-
-Overview of scanning tools built into ORT and their capabilities.
-
-### ORT Plugins (`/plugins/`)
-
-List of available ORT plugins and how they extend ORT's functionality.
-
----
-
-## 11. Switching Languages
+## 10. Switching Languages
 
 ORT Web supports **Vietnamese** (default) and **English**.
 
@@ -438,7 +406,7 @@ ORT Web supports **Vietnamese** (default) and **English**.
 
 ---
 
-## 12. Updating ORT Web
+## 11. Updating ORT Web
 
 ### Check current version
 
@@ -473,7 +441,7 @@ To update the ORT binary (not ORT Web), re-run the **"Install ORT"** process fro
 
 ---
 
-## 13. Common Issues & Troubleshooting
+## 12. Common Issues & Troubleshooting
 
 ### "ORT not found" or "ORT is not installed"
 
@@ -538,12 +506,7 @@ ort-web open -p 3000    # use any available port
 
 ---
 
-## 14. FAQ
-
-**Q: Does ORT Web send any data to external servers?**
-A: The application runs entirely locally. The only external network calls are:
-- Downloading ORT from GitHub (one-time installation)
-- OSV vulnerability database queries during the Advise step
+## 13. FAQ
 
 **Q: How long does analysis take?**
 A: Depends on project size and number of dependencies. Typical ranges:
@@ -556,9 +519,6 @@ A: Yes. ORT Web supports up to **2 parallel jobs** by default. Additional jobs a
 
 **Q: Where are the generated reports stored?**
 A: In the `runtime/artifacts/` directory inside the ORT Web installation folder. You can also download them directly from the web interface.
-
-**Q: Can I use ORT Web in CI/CD pipelines?**
-A: ORT Web is designed for local use. For CI/CD, consider using ORT CLI directly or the [ORT GitHub Action](https://github.com/oss-review-toolkit/ort-ci-github-action). ORT Web's job history can still be used for audit purposes after local scans.
 
 **Q: What does "Failed" status mean?**
 A: The ORT process exited with an error. Go to the Job Detail page and read the log to find the specific error. Common causes: missing package manager, dependency resolution failure, or network timeout.

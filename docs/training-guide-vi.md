@@ -15,11 +15,10 @@
 7. [Đọc hiểu kết quả quét](#7-đọc-hiểu-kết-quả-quét)
 8. [Lịch sử quét và tìm kiếm](#8-lịch-sử-quét-và-tìm-kiếm)
 9. [Xem và tải báo cáo](#9-xem-và-tải-báo-cáo)
-10. [Các trang tra cứu](#10-các-trang-tra-cứu)
-11. [Đổi ngôn ngữ giao diện](#11-đổi-ngôn-ngữ-giao-diện)
-12. [Cập nhật ORT Web](#12-cập-nhật-ort-web)
-13. [Xử lý các lỗi thường gặp](#13-xử-lý-các-lỗi-thường-gặp)
-14. [Câu hỏi thường gặp](#14-câu-hỏi-thường-gặp)
+10. [Đổi ngôn ngữ giao diện](#10-đổi-ngôn-ngữ-giao-diện)
+11. [Cập nhật ORT Web](#11-cập-nhật-ort-web)
+12. [Xử lý các lỗi thường gặp](#12-xử-lý-các-lỗi-thường-gặp)
+13. [Câu hỏi thường gặp](#13-câu-hỏi-thường-gặp)
 
 ---
 
@@ -142,10 +141,10 @@ Màn hình chính khi mở ORT Web là **Dashboard** — nơi thực hiện toà
 │  ─────────────────        │  ─────────────────              │
 │  Dashboard            ←   │  [Thống kê tổng quan]           │
 │  Lịch sử quét             │  Tổng số | Thành công | Lỗi     │
-│  Hướng dẫn cài đặt        │                                  │
-│  Lệnh ORT                 │  [Trạng thái ORT]               │
-│  Công cụ ORT              │  ✅ Đã cài / ⚠️ Chưa cài        │
-│  Plugin ORT               │                                  │
+│                           │                                  │
+│                           │  [Trạng thái ORT]               │
+│                           │  ✅ Đã cài / ⚠️ Chưa cài        │
+│                           │                                  │
 │                           │  [Cài đặt ORT] (nếu chưa có)   │
 │                           │                                  │
 │                           │  [Quét dự án]                   │
@@ -390,38 +389,7 @@ Trang chi tiết một lần quét bao gồm:
 
 ---
 
-## 10. Các trang tra cứu
-
-ORT Web có sẵn các trang tài liệu tra cứu, truy cập từ thanh bên trái.
-
-### Hướng dẫn cài đặt (`/setup/`)
-
-Hiển thị:
-- Trạng thái phát hiện ORT trên máy
-- Kết quả nhận diện trình quản lý gói
-- Vị trí các file cấu hình (`~/.ort/config.yml`, `~/.ort/ort.properties`)
-- Gợi ý cấu hình cho từng loại trình quản lý gói phổ biến
-
-### Lệnh ORT (`/commands/`)
-
-Tra cứu các lệnh ORT có thể dùng:
-- `analyze` — phân tích thư viện phụ thuộc
-- `advise` — kiểm tra lỗ hổng bảo mật
-- `report` — tạo báo cáo
-- `evaluate` — áp dụng quy tắc chính sách
-- `download` — tải mã nguồn về
-
-### Công cụ ORT (`/tools/`)
-
-Tổng quan các công cụ quét tích hợp sẵn trong ORT.
-
-### Plugin ORT (`/plugins/`)
-
-Danh sách các plugin mở rộng chức năng của ORT.
-
----
-
-## 11. Đổi ngôn ngữ giao diện
+## 10. Đổi ngôn ngữ giao diện
 
 ORT Web hỗ trợ **Tiếng Việt** (mặc định) và **Tiếng Anh**.
 
@@ -434,7 +402,7 @@ ORT Web hỗ trợ **Tiếng Việt** (mặc định) và **Tiếng Anh**.
 
 ---
 
-## 12. Cập nhật ORT Web
+## 11. Cập nhật ORT Web
 
 ### Kiểm tra phiên bản đang dùng
 
@@ -469,7 +437,7 @@ pip install -e .
 
 ---
 
-## 13. Xử lý các lỗi thường gặp
+## 12. Xử lý các lỗi thường gặp
 
 ### Lỗi "ORT chưa được cài đặt" hoặc không tìm thấy ORT
 
@@ -534,10 +502,7 @@ ort-web open -p 3000    # đổi sang bất kỳ cổng nào còn trống
 
 ---
 
-## 14. Câu hỏi thường gặp
-
-**ORT Web có gửi dữ liệu ra bên ngoài không?**
-Không. Ứng dụng chạy hoàn toàn trên máy cục bộ. Chỉ có 2 trường hợp kết nối internet: tải ORT từ GitHub khi cài lần đầu, và truy vấn cơ sở dữ liệu OSV trong bước Advise.
+## 13. Câu hỏi thường gặp
 
 **Quét mất bao lâu?**
 Tùy vào số lượng thư viện phụ thuộc trong dự án:
