@@ -88,8 +88,13 @@ async def run_ort_command(job_id: str, command: str, work_dir: str, log_file: Pa
     if tokens[0] == "ort":
         tokens[0] = executable
 
+    spawn_tokens = tokens
+    if os.name == "nt" and str(tokens[0]).lower().endswith(".bat"):
+        # Batch scripts require cmd.exe invocation for consistent execution.
+        spawn_tokens = ["cmd", "/c", *tokens]
+
     process = await asyncio.create_subprocess_exec(
-        *tokens,
+        *spawn_tokens,
         cwd=work_dir,
         env=env,
         stdout=asyncio.subprocess.PIPE,

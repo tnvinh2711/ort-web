@@ -318,8 +318,12 @@ def _verify_ort_runtime(launcher: Path, java_home: Path | None = None) -> None:
         env["JAVA_HOME"] = str(java_home)
         env["PATH"] = str(java_home / "bin") + os.pathsep + env.get("PATH", "")
 
+    cmd = [str(launcher), "--version"]
+    if os.name == "nt" and str(launcher).lower().endswith(".bat"):
+        cmd = ["cmd", "/c", *cmd]
+
     result = subprocess.run(
-        [str(launcher), "--version"],
+        cmd,
         capture_output=True,
         text=True,
         timeout=60,

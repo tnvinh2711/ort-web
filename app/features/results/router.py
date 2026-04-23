@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
@@ -119,7 +120,9 @@ def render_artifact(request: Request, path: str) -> HTMLResponse:
         raise HTTPException(status_code=400, detail="This file type cannot be rendered directly")
 
     if suffix in {".html", ".htm"}:
-        return HTMLResponse(content=file_path.read_text(encoding="utf-8", errors="replace"))
+        rel_path = file_path.relative_to(_artifact_base_dir()).as_posix()
+        redirect_path = quote(rel_path, safe="/")
+        return RedirectResponse(url=f"/results/artifacts/{redirect_path}", status_code=307)
 
     text = file_path.read_text(encoding="utf-8", errors="replace")
     escaped = (
@@ -131,12 +134,24 @@ def render_artifact(request: Request, path: str) -> HTMLResponse:
     html = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>"
         + title
-        + "</title><style>body{font-family:monospace;margin:16px;}pre{white-space:pre-wrap;word-break:break-word;}"
+        + "</title><style>"
+        + "body{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono',monospace;"
+        + "margin:16px;background:#0f172a;color:#e2e8f0;}"
+        + "a{display:inline-block;margin-bottom:12px;color:#93c5fd;}"
+        + "h2{color:#f8fafc;margin-top:0;}"
+        + "pre{white-space:pre-wrap;word-break:break-word;background:#111827;color:#e5e7eb;"
+        + "padding:12px;border-radius:8px;border:1px solid #374151;}"
         + "a{display:inline-block;margin-bottom:12px;}</style></head><body>"
         + "<a href='/results/'>Back to Results</a>"
         + f"<h2>{title}</h2><pre>{escaped}</pre></body></html>"
     )
     return HTMLResponse(content=html)
+
+
+@router.get("/artifacts/{artifact_path:path}")
+def serve_artifact_file(artifact_path: str) -> FileResponse:
+    file_path = _resolve_artifact_path(artifact_path)
+    return FileResponse(path=file_path)
 
 
 @router.get("/download")
