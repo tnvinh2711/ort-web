@@ -8,8 +8,8 @@ from typing import Any
 import yaml
 
 from app.config import settings
-from app.services.vertex_ai_service import VertexAIError, build_prompt, suggest_versions
-from app.services.vertex_config_store import get_vertex_config
+from app.features.analysis.vertex_ai_service import VertexAIError, build_prompt, suggest_versions
+from app.features.setup.vertex_config_store import get_vertex_config
 
 
 _MAX_DEPENDENCIES = 140

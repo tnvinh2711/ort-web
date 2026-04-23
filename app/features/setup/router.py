@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.i18n import translate
-from app.services.vertex_config_store import get_vertex_config, mask_secret, save_vertex_config
+from app.features.setup.vertex_config_store import get_vertex_config, mask_secret, save_vertex_config
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 templates = Jinja2Templates(directory="app/templates")

@@ -129,7 +129,7 @@ def get_managers_for_language(language: str) -> list[str]:
     Uses the category field on each PACKAGE_MANAGERS entry and maps
     through ``LANGUAGE_TO_CATEGORIES`` from the language detector.
     """
-    from app.services.language_detector import get_package_manager_categories
+    from app.features.shared.language_detector import get_package_manager_categories
 
     categories = set(get_package_manager_categories(language))
     if not categories:

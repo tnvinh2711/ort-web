@@ -129,106 +129,121 @@
     <h2>{{ t('results.generated_files') }}</h2>
   <div id="job-files"
        hx-get="/jobs/{{ job.job_id }}/files?lang={{ lang }}"
-       hx-trigger="load{% if job.status.value in ('pending', 'running') %}, every 5s{% endif %}"
+       hx-trigger="load"
        hx-swap="innerHTML">
   </div>
   </div>
 </section>
 
-<!-- SSE log + status -->
-{% if job.status.value in ('pending', 'running') %}
 <script>
 (function() {
+  if (!window.ORTRealtime) return;
+
   var jobId = '{{ job.job_id }}';
   var logEl = document.getElementById('job-log');
   var badge = document.getElementById('job-status-badge');
   var progress = document.getElementById('job-progress');
   var filesEl = document.getElementById('job-files');
-  var src = new EventSource('/jobs/' + jobId + '/events');
+  var shouldTrackStatus = {{ 'true' if job.status.value in ('pending', 'running') else 'false' }};
+  var aiPending = {{ 'true' if job.ai_report_status == 'pending' else 'false' }};
+
+  function reloadPanel() {
+    if (window.__ortPanelReloading === jobId) return;
+    window.__ortPanelReloading = jobId;
+
+    var clearReloadLock = function() {
+      if (window.__ortPanelReloading === jobId) {
+        window.__ortPanelReloading = null;
+      }
+      document.body.removeEventListener('htmx:afterSwap', afterSwapHandler);
+    };
+
+    var afterSwapHandler = function(evt) {
+      if (evt && evt.target && evt.target.id === 'job-panel-container') {
+        clearReloadLock();
+      }
+    };
+
+    document.body.addEventListener('htmx:afterSwap', afterSwapHandler);
+    window.setTimeout(clearReloadLock, 3000);
+    htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', { target: '#job-panel-container', swap: 'innerHTML' });
+  }
+
+  var statusLabel = {
+    {% for key, val in status_map.items() %}
+    '{{ key }}': '{{ val }}',
+    {% endfor %}
+  };
 
   if (logEl) logEl.scrollTop = logEl.scrollHeight;
 
-  src.addEventListener('log', function(e) {
-    try {
-      var data = JSON.parse(e.data);
-      if (data.line && logEl) {
-        logEl.textContent += data.line;
-        var nearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 100;
-        if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
-      }
-    } catch (_) {}
-  });
-
-  src.addEventListener('status', function(e) {
-    try {
-      var data = JSON.parse(e.data);
-      var status = data.status || '';
-      if (badge) {
-        badge.className = 'status-pill status-pill-' + status;
-        var label = status;
-        {% for key, val in status_map.items() %}
-        if (status === '{{ key }}') label = '{{ val }}';
-        {% endfor %}
-        badge.innerHTML = '<span class="status-dot"></span>' + label;
-      }
-      if (status === 'success' || status === 'failed' || status === 'cancelled') {
-        src.close();
-        localStorage.removeItem('ort_active_job');
-        if (progress) progress.style.display = 'none';
-        var logDetails = document.getElementById('job-log-details');
-        if (logDetails) logDetails.removeAttribute('open');
-        var panel = document.getElementById('active-job-panel');
-        if (panel) {
-          var color = status === 'success' ? 'var(--success)' : 'var(--danger)';
-          panel.style.borderLeftColor = color;
+  if (shouldTrackStatus || aiPending) {
+    window.ORTRealtime.attachJobStream({
+      jobId: jobId,
+      onLog: function(data) {
+        if (data.line && logEl) {
+          logEl.textContent += data.line;
+          var nearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 100;
+          if (nearBottom) logEl.scrollTop = logEl.scrollHeight;
         }
-        if (filesEl) htmx.trigger(filesEl, 'load');
-        // Reload full log from server (SSE may miss lines if job was fast)
-        fetch('/jobs/' + jobId + '/log-text').then(function(r) { return r.text(); }).then(function(txt) {
-          if (logEl && txt) logEl.textContent = txt;
-        });
-        // Reload panel to pick up vulnerability summary banner
-        var container = document.getElementById('job-panel-container');
-        if (container) {
-          htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', {target: '#job-panel-container', swap: 'innerHTML'});
+      },
+      onStatus: function(data) {
+        if (!shouldTrackStatus) return;
+        var status = data.status || '';
+        if (badge) {
+          badge.className = 'status-pill status-pill-' + status;
+          badge.innerHTML = '<span class="status-dot"></span>' + (statusLabel[status] || status);
         }
-      }
-    } catch (_) {}
-  });
 
-  src.onerror = function() { src.close(); };
-})();
-</script>
-{% endif %}
-
-<!-- Auto-reload panel while AI report is pending -->
-{% if job.ai_report_status == 'pending' %}
-<script>
-(function() {
-  var jobId = '{{ job.job_id }}';
-  var container = document.getElementById('job-panel-container');
-  
-  var checkAiStatus = function() {
-    if (!container) return;
-    fetch('/jobs/' + jobId + '/api/status').then(function(r) { return r.json(); }).then(function(data) {
-      if (data.ai_report_status && data.ai_report_status !== 'pending') {
-        // AI report is done, reload the panel
-        htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', {target: '#job-panel-container', swap: 'innerHTML'});
-      } else if (data.ai_report_status === 'pending') {
-        // Still pending, check again in 5 seconds
-        setTimeout(checkAiStatus, 5000);
-      }
-    }).catch(function() {
-      // On error, try again later
-      setTimeout(checkAiStatus, 5000);
+        if (status === 'success' || status === 'failed' || status === 'cancelled') {
+          window.ORTRealtime.detachJobStream(jobId);
+          window.ORTRealtime.stopAiFallbackPoll(jobId);
+          localStorage.removeItem('ort_active_job');
+          if (progress) progress.style.display = 'none';
+          var logDetails = document.getElementById('job-log-details');
+          if (logDetails) logDetails.removeAttribute('open');
+          var panel = document.getElementById('active-job-panel');
+          if (panel) {
+            var color = status === 'success' ? 'var(--success)' : 'var(--danger)';
+            panel.style.borderLeftColor = color;
+          }
+          if (filesEl) htmx.trigger(filesEl, 'load');
+          reloadPanel();
+        }
+      },
+      onAiReport: function(data) {
+        if (data.status && data.status !== 'pending') {
+          window.ORTRealtime.stopAiFallbackPoll(jobId);
+          reloadPanel();
+        }
+      },
+      onError: function() {
+        if (aiPending) {
+          window.ORTRealtime.startAiFallbackPoll({
+            jobId: jobId,
+            intervalMs: 8000,
+            onDone: function() {
+              reloadPanel();
+            },
+          });
+        }
+      },
     });
-  };
-  
-  // Start checking after 2 seconds
-  setTimeout(checkAiStatus, 2000);
+  }
+
+  if (aiPending) {
+    window.ORTRealtime.startAiFallbackPoll({
+      jobId: jobId,
+      intervalMs: 8000,
+      onDone: function() {
+        reloadPanel();
+      },
+    });
+  } else {
+    window.ORTRealtime.stopAiFallbackPoll(jobId);
+  }
 })();
 </script>
-{% endif %}
 
 <script>
 async function retryAiReport(jobId) {
@@ -239,7 +254,7 @@ async function retryAiReport(jobId) {
       alert(data.error || 'Cannot retry AI report right now.');
       return;
     }
-    // Reload the panel to reflect updated AI report status
+    window.ORTRealtime && window.ORTRealtime.teardownAll();
     var container = document.getElementById('job-panel-container');
     if (container) {
       htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', {target: '#job-panel-container', swap: 'innerHTML'});

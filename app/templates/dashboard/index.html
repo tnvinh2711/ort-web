@@ -142,6 +142,9 @@
     var container = document.getElementById('job-panel-container');
     if (!container) return;
     _panelLoading = true;
+    if (window.ORTRealtime) {
+      window.ORTRealtime.teardownAll();
+    }
     try {
       var resp = await fetch('/jobs/' + jobId + '/panel?lang={{ lang }}');
       if (!resp.ok) { localStorage.removeItem('ort_active_job'); return; }

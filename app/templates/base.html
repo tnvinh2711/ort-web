@@ -105,6 +105,11 @@
   // Switch to a tab — instant if already loaded, one-time fetch otherwise.
   function switchTab(name) {
     if (_currentTab === name && _tabReady[name]) return;
+
+    if (window.ORTRealtime && _currentTab && _currentTab !== name) {
+      window.ORTRealtime.teardownAll();
+    }
+
     _currentTab = name;
 
     ['dashboard', 'history', 'setup'].forEach(function(tab) {

@@ -8,12 +8,13 @@ from pathlib import Path
 
 from app.config import settings
 from app.models import Job, JobStatus
-from app.services.ort_installer import install_ort_local
-from app.services.job_store import job_store
-from app.services.log_stream import log_stream_hub
-from app.services.ort_executor import OrtExecutionError, run_ort_command
-from app.services.ai_suggestion_report import generate_ai_suggestion_report
-from app.services.vuln_summary import parse_vuln_summary
+from app.features.ort.installer import install_ort_local
+from app.features.jobs.event_contract import EVENT_AI_REPORT, EVENT_LOG, EVENT_STATUS, make_event
+from app.features.jobs.store import job_store
+from app.features.jobs.log_stream import log_stream_hub
+from app.features.ort.executor import OrtExecutionError, run_ort_command
+from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
+from app.features.analysis.vuln_summary import parse_vuln_summary
 
 
 def _extract_failure_reason(log_file: Path) -> str | None:
@@ -64,7 +65,7 @@ async def _log_info(job_id: str, log_file: Path, message: str) -> None:
     line = f"[info] {message}\n"
     with log_file.open("a", encoding="utf-8") as out:
         out.write(line)
-    await log_stream_hub.publish(job_id, {"type": "log", "line": line})
+    await log_stream_hub.publish(job_id, make_event(EVENT_LOG, line=line))
 
 
 async def _run_post_analyze_pipeline(
@@ -173,6 +174,16 @@ class JobQueue:
         job.ai_report_path = None
         job.ai_report_summary = "Retry requested. Generating AI report in background..."
         job_store.update_job(job)
+        asyncio.create_task(
+            log_stream_hub.publish(
+                job.job_id,
+                make_event(
+                    EVENT_AI_REPORT,
+                    status="pending",
+                    summary=job.ai_report_summary,
+                ),
+            )
+        )
         asyncio.create_task(self._run_ai_suggestion_report(job_id))
         return True
 
@@ -191,6 +202,12 @@ class JobQueue:
         job.ai_report_path = None
         job.ai_report_summary = None
         job_store.update_job(job)
+        asyncio.create_task(
+            log_stream_hub.publish(
+                job.job_id,
+                make_event(EVENT_AI_REPORT, status="pending", summary=""),
+            )
+        )
 
         asyncio.create_task(self._run_ai_suggestion_report(job.job_id))
 
@@ -213,6 +230,14 @@ class JobQueue:
         latest.ai_report_path = str(result.get("path", "")) or None
         latest.ai_report_summary = str(result.get("summary", "")) or None
         job_store.update_job(latest)
+        await log_stream_hub.publish(
+            latest.job_id,
+            make_event(
+                EVENT_AI_REPORT,
+                status=latest.ai_report_status,
+                summary=latest.ai_report_summary or "",
+            ),
+        )
 
     async def _run(self, job_id: str) -> None:
         ephemeral = job_id in self._ephemeral_jobs and self._ephemeral_jobs[job_id] is not None
@@ -228,7 +253,7 @@ class JobQueue:
         job.started_at = Job.now_iso()
         if not ephemeral:
             job_store.update_job(job)
-        await log_stream_hub.publish(job_id, {"type": "status", "status": job.status.value})
+        await log_stream_hub.publish(job_id, make_event(EVENT_STATUS, status=job.status.value))
 
         log_file = Path(job.log_file)
         log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -258,17 +283,22 @@ class JobQueue:
             job.error_message = str(exc)
             with log_file.open("a", encoding="utf-8") as out:
                 out.write(f"[error] {exc}\n")
+            await log_stream_hub.publish(job.job_id, make_event(EVENT_LOG, line=f"[error] {exc}\n"))
         except Exception as exc:  # pragma: no cover
             job.status = JobStatus.FAILED
             job.error_message = f"Unexpected error: {exc}"
             with log_file.open("a", encoding="utf-8") as out:
                 out.write(f"[error] Unexpected error: {exc}\n")
+            await log_stream_hub.publish(
+                job.job_id,
+                make_event(EVENT_LOG, line=f"[error] Unexpected error: {exc}\n"),
+            )
         finally:
             job.finished_at = Job.now_iso()
             if not ephemeral:
                 job_store.update_job(job)
                 self._launch_ai_suggestion_task(job, ephemeral=ephemeral)
-            await log_stream_hub.publish(job_id, {"type": "status", "status": job.status.value})
+            await log_stream_hub.publish(job_id, make_event(EVENT_STATUS, status=job.status.value))
 
 
 job_queue = JobQueue()

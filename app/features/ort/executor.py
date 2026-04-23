@@ -6,7 +6,7 @@ import shlex
 from pathlib import Path
 
 from app.config import settings
-from app.services.log_stream import log_stream_hub
+from app.features.jobs.log_stream import log_stream_hub
 
 
 class OrtExecutionError(RuntimeError):

@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
-from app.services.language_detector import get_language_options
+from app.features.shared.language_detector import get_language_options
 
 # Files to hide from the results listing.
 _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}

@@ -6,8 +6,8 @@ from typing import Optional
 
 import yaml
 
-from app.services.language_detector import get_package_manager_categories
-from app.services.ort_properties import get_managers_for_language
+from app.features.shared.language_detector import get_package_manager_categories
+from app.features.ort.properties import get_managers_for_language
 
 # Default path excludes per language category.
 # These go into .ort.yml (repository config), NOT config.yml (global config).

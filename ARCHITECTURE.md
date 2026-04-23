@@ -6,6 +6,27 @@ ORT Web is a local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss
 
 **Tech Stack**: FastAPI + Jinja2 + HTMX + Server-Sent Events (SSE) + SQLite
 
+**Architecture Style**: Feature-first modules under `app/features`.
+
+---
+
+## Feature-First Structure
+
+```
+app/
+  features/
+    routes.py          # Central route registration for all feature routers
+    dashboard/       # Dashboard routes + analyze/install orchestration
+    jobs/            # Job routes + queue + store + log stream
+      event_contract.py  # Shared SSE event types and payload encoding
+    results/         # Artifact browsing and file rendering
+    setup/           # Setup routes + AI config persistence
+    ort/             # ORT installer/executor/config/properties services
+    analysis/        # Vulnerability summary + AI suggestion generation
+    catalog/         # Commands/tools/plugins routes + ORT metadata registry
+    shared/          # Shared helpers (language detection)
+```
+
 ---
 
 ## Application Flow
@@ -117,14 +138,18 @@ Created (pending)
 
 | Service | Purpose |
 |---------|---------|
-| `JobQueue` | AsyncIO queue with worker pool (default 2 parallel). Handles job lifecycle |
-| `JobStore` | SQLite persistence. CRUD + paged queries with filters |
-| `LogStreamHub` | Pub/sub for SSE events. Per-job subscriber queues |
-| `OrtExecutor` | Executes ORT CLI. Validates commands, streams stdout |
-| `OrtInstaller` | Downloads ORT from GitHub releases. Platform-specific extraction |
-| `LanguageDetector` | Scans project files to detect language + recommend package managers |
-| `OrtProperties` | Generates `~/.ort/ort.properties` with enabled package managers |
-| `OrtConfig` | Generates `config.yml` + per-project `.ort.yml` with path excludes |
+| `features/jobs/queue.py` | AsyncIO queue with worker pool (default 2 parallel). Handles job lifecycle |
+| `features/jobs/event_contract.py` | Canonical realtime event names / SSE payload format |
+| `features/jobs/store.py` | SQLite persistence. CRUD + paged queries with filters |
+| `features/jobs/log_stream.py` | Pub/sub for SSE events. Per-job subscriber queues |
+| `features/ort/executor.py` | Executes ORT CLI. Validates commands, streams stdout |
+| `features/ort/installer.py` | Downloads ORT from GitHub releases. Platform-specific extraction |
+| `features/shared/language_detector.py` | Scans project files to detect language + recommend package managers |
+| `features/ort/properties.py` | Generates `~/.ort/ort.properties` with enabled package managers |
+| `features/ort/config.py` | Generates `config.yml` + per-project `.ort.yml` with path excludes |
+| `features/analysis/ai_suggestion_report.py` | Builds AI remediation suggestions from ORT artifacts |
+| `features/analysis/vuln_summary.py` | Aggregates vulnerability severities from advisor output |
+| `features/routes.py` | Single place to include all feature routers into FastAPI app |
 | `i18n` | JSON-based translations (Vietnamese + English) |
 
 ---

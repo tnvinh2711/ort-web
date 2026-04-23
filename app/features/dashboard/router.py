@@ -14,12 +14,12 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.i18n import translate
 from app.models import Job
-from app.services.job_queue import job_queue
-from app.services.job_store import job_store
-from app.services.language_detector import detect_language, get_language_options
-from app.services.ort_config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
-from app.services.ort_properties import auto_generate_ort_properties, get_managers_for_language
-from app.services.vuln_summary import parse_vuln_summary
+from app.features.jobs.queue import job_queue
+from app.features.jobs.store import job_store
+from app.features.shared.language_detector import detect_language, get_language_options
+from app.features.ort.config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
+from app.features.ort.properties import auto_generate_ort_properties, get_managers_for_language
+from app.features.analysis.vuln_summary import parse_vuln_summary
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")

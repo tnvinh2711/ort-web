@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.services.job_store import job_store
+from app.features.jobs.store import job_store
 
 _AI_API_KEY = "ai.api_key"
 _AI_MODEL = "ai.model"

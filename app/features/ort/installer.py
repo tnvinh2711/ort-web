@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable, Awaitable
 
 from app.config import settings
-from app.services.log_stream import log_stream_hub
+from app.features.jobs.log_stream import log_stream_hub
 
 GITHUB_LATEST_RELEASE = "https://api.github.com/repos/oss-review-toolkit/ort/releases/latest"
 

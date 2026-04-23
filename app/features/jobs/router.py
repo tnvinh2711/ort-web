@@ -16,11 +16,12 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.i18n import translate
 from app.models import Job
-from app.services.job_queue import job_queue
-from app.services.job_store import job_store
-from app.services.log_stream import log_stream_hub
-from app.services.vuln_summary import parse_vuln_summary
-from app.routers.results import _collect_artifact_files
+from app.features.jobs.queue import job_queue
+from app.features.jobs.event_contract import connected_payload, heartbeat_payload, to_sse_payload
+from app.features.jobs.store import job_store
+from app.features.jobs.log_stream import log_stream_hub
+from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.results.router import _collect_artifact_files
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 templates = Jinja2Templates(directory="app/templates")
@@ -139,15 +140,13 @@ async def job_events(job_id: str) -> StreamingResponse:
 
     async def stream():
         try:
-            yield "event: ping\ndata: connected\n\n"
+            yield connected_payload()
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=20)
-                    event_type = str(event.get("type", "message"))
-                    payload = json.dumps(event, ensure_ascii=False)
-                    yield f"event: {event_type}\ndata: {payload}\n\n"
+                    yield to_sse_payload(event)
                 except asyncio.TimeoutError:
-                    yield "event: ping\ndata: heartbeat\n\n"
+                    yield heartbeat_payload()
         finally:
             log_stream_hub.unsubscribe(job_id, queue)
 
