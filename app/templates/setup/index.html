@@ -1,127 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="hero">
-  <h1>{{ t('setup.title') }}</h1>
-  <p>{{ t('setup.subtitle') }}</p>
+  <h1>Grok API Setup</h1>
+  <p>Configure xAI credentials for AI vulnerability suggestion reports.</p>
 </section>
 
-<!-- Auto-select by Language -->
-<section class="panel">
-  <h2>{{ t('setup.auto_select_title') }}</h2>
-  <p style="color:var(--secondary); margin:4px 0 12px; font-size:13px;">{{ t('setup.auto_select_help') }}</p>
-  <div class="row-input" style="max-width:500px;">
-    <select id="autoSelectLanguage" style="flex:1;">
-      <option value="">-- {{ t('setup.auto_select_language') }} --</option>
-      {% for opt in language_options %}
-        <option value="{{ opt.value }}">{{ opt.label }}</option>
-      {% endfor %}
-    </select>
-    <button type="button" class="btn-primary" onclick="autoSelectManagers()">
-      {{ t('setup.auto_select_btn') }}
-    </button>
-  </div>
-  <span id="autoSelectStatus" style="font-size:13px; margin-top:8px; display:block;"></span>
-</section>
-
-<!-- Detection Status -->
-<section class="panel">
-  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-    <h2 style="margin:0;">{{ t('setup.detect_title') }}</h2>
-    <button type="button" class="btn-secondary" onclick="redetectAll()" id="redetectBtn">
-      {{ t('setup.redetect_btn') }}
-    </button>
-  </div>
-  <p style="color:var(--muted); margin:6px 0 12px; font-size:13px;">{{ t('setup.detect_help') }}</p>
-  <p style="color:var(--danger); margin:0 0 12px; font-size:13px;">{{ t('setup.select_hint') }}</p>
-
-  <div id="tools-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:12px;">
-    {% for tool in tools %}
-    <div class="tool-card {{ 'tool-detected' if tool.detected else 'tool-missing' }}"
-         data-ort-name="{{ tool.ort_name }}"
-         id="tool-card-{{ tool.ort_name }}">
-      <div style="display:flex; align-items:flex-start; gap:8px;">
-        <label style="display:flex; align-items:center; gap:8px; flex:1; cursor:pointer;">
-          <input type="checkbox"
-                 class="pm-checkbox"
-                 data-ort-name="{{ tool.ort_name }}"
-                 style="width:18px; height:18px; cursor:pointer; accent-color:var(--primary);" />
-          <span style="font-weight:600;">{{ tool.label }}</span>
-        </label>
-        <span class="tool-badge {{ 'badge-found' if tool.detected else 'badge-missing' }}">
-          {{ t('setup.status_found') if tool.detected else t('setup.status_missing') }}
-        </span>
-      </div>
-      <p style="margin:6px 0 0; color:var(--muted); font-size:13px;">{{ tool.description }}</p>
-
-      {% if tool.detected and tool.path %}
-      <div style="margin-top:8px;">
-        <code style="font-size:12px; word-break:break-all;">{{ tool.path }}</code>
-        {% if tool.version %}
-        <span style="font-size:12px; color:var(--muted); display:block; margin-top:3px;">{{ tool.version }}</span>
-        {% endif %}
-      </div>
-      {% else %}
-      <div style="margin-top:8px;">
-        <div class="row-input">
-          <input type="text"
-                 class="manual-path-input"
-                 data-ort-name="{{ tool.ort_name }}"
-                 placeholder="{{ t('setup.manual_path_placeholder') }}"
-                 style="flex:1; font-size:13px;" />
-          <button type="button"
-                  class="btn-secondary btn-sm"
-                  onclick="pickManualPath('{{ tool.ort_name }}')">
-            {{ t('dashboard.pick_folder_btn') }}
-          </button>
-        </div>
-        <p style="margin:4px 0 0; font-size:12px; color:var(--muted);">
-          {{ t('setup.manual_hint') }}: <code>{{ tool.detect_commands | join(' / ') }}</code>
-        </p>
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</section>
-
-<!-- Apply Button -->
-<section class="panel">
-  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-    <button type="button" class="btn-primary" onclick="applyOrtProperties()" id="applyBtn">
-      {{ t('setup.apply_btn') }}
-    </button>
-    <span id="applyStatus" style="font-size:13px;"></span>
-  </div>
-  <p style="color:var(--muted); margin:8px 0 0; font-size:13px;">
-    {{ t('setup.apply_help') }}: <code>{{ props_path }}</code>
-  </p>
-</section>
-
-<!-- Current ort.properties Preview -->
-<section class="panel">
-  <h2>{{ t('setup.props_preview_title') }}</h2>
-  <p style="color:var(--muted); margin:0 0 8px; font-size:13px;">{{ props_path }}</p>
-  <pre id="propsPreview">{{ props_content if props_content else t('setup.props_empty') }}</pre>
-</section>
-
-<!-- config.yml Preview -->
-<section class="panel">
-  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-    <h2 style="margin:0;">{{ t('setup.config_yml_title') }}</h2>
-    <button type="button" class="btn-secondary" onclick="generateConfigYml()" id="generateConfigBtn">
-      {{ t('setup.generate_config_btn') }}
-    </button>
-  </div>
-  <p style="color:var(--muted); margin:6px 0 8px; font-size:13px;">{{ t('setup.config_yml_help') }}</p>
-  <p style="color:var(--muted); margin:0 0 8px; font-size:13px;">{{ config_yml_path }}</p>
-  <span id="configGenStatus" style="font-size:13px;"></span>
-  <pre id="configPreview">{{ config_yml_content if config_yml_content else t('setup.config_yml_empty') }}</pre>
-</section>
-
-<!-- Grok Config -->
 <section class="panel">
   <h2>Grok (xAI)</h2>
-  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">Configure xAI API key and model for automatic dependency fix suggestions on failed jobs.</p>
+  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">Only AI settings are configured here. ORT/tool configuration is handled automatically during analysis.</p>
   <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
     <label>
       <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Model</span>
@@ -129,14 +15,14 @@
     </label>
     <label style="grid-column:1 / -1;">
       <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">API Key</span>
-      <input id="vertexApiKey" type="password" placeholder="AIza..." />
+      <input id="vertexApiKey" type="password" placeholder="xai-..." />
       {% if vertex_api_key_masked %}
       <span style="display:block; margin-top:6px; font-size:12px; color:var(--muted);">Current: {{ vertex_api_key_masked }}</span>
       {% endif %}
     </label>
   </div>
   <div style="display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap;">
-    <button type="button" class="btn-primary" id="saveVertexBtn" onclick="saveVertexConfig()">Save Vertex Config</button>
+    <button type="button" class="btn-primary" id="saveVertexBtn" onclick="saveVertexConfig()">Save Grok Config</button>
     <span id="vertexStatus" style="font-size:13px;"></span>
   </div>
 </section>
@@ -193,148 +79,6 @@ async function saveVertexConfig() {
     }
   } catch (e) {
     statusEl.textContent = 'Save failed: ' + e.message;
-    statusEl.style.color = 'var(--danger)';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-function redetectAll() {
-  window.location.reload();
-}
-
-function updateToolsGrid(tools) {
-  tools.forEach(function(tool) {
-    var card = document.getElementById('tool-card-' + tool.ort_name);
-    if (!card) return;
-
-    var badge = card.querySelector('.tool-badge');
-    if (badge) {
-      badge.textContent = tool.detected
-        ? '{{ t("setup.status_found") }}'
-        : '{{ t("setup.status_missing") }}';
-      badge.className = 'tool-badge ' + (tool.detected ? 'badge-found' : 'badge-missing');
-    }
-
-    card.className = 'tool-card ' + (tool.detected ? 'tool-detected' : 'tool-missing');
-  });
-}
-
-async function pickManualPath(ortName) {
-  try {
-    var res = await fetch('/api/pick-directory');
-    var data = await res.json();
-    if (data.selected) {
-      var input = document.querySelector('.manual-path-input[data-ort-name="' + ortName + '"]');
-      if (input) input.value = data.selected;
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function autoSelectManagers() {
-  var lang = document.getElementById('autoSelectLanguage').value;
-  var statusEl = document.getElementById('autoSelectStatus');
-  if (!lang) return;
-
-  try {
-    var res = await fetch('/setup/api/auto-select', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language: lang }),
-    });
-    var data = await res.json();
-
-    if (data.recommended) {
-      var recommended = new Set(data.recommended);
-      document.querySelectorAll('.pm-checkbox').forEach(function(cb) {
-        cb.checked = recommended.has(cb.getAttribute('data-ort-name'));
-      });
-      statusEl.textContent = data.recommended.join(', ');
-      statusEl.style.color = 'var(--success)';
-    }
-  } catch (e) {
-    statusEl.textContent = e.message;
-    statusEl.style.color = 'var(--danger)';
-  }
-}
-
-async function generateConfigYml() {
-  var lang = document.getElementById('autoSelectLanguage').value;
-  var statusEl = document.getElementById('configGenStatus');
-  var btn = document.getElementById('generateConfigBtn');
-  if (!lang) {
-    statusEl.textContent = '{{ t("setup.auto_select_language") }}';
-    statusEl.style.color = 'var(--danger)';
-    return;
-  }
-
-  btn.disabled = true;
-  try {
-    var res = await fetch('/setup/api/generate-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language: lang }),
-    });
-    var data = await res.json();
-
-    if (data.success) {
-      statusEl.textContent = '{{ t("setup.config_generated") }} ' + data.language;
-      statusEl.style.color = 'var(--success)';
-      var preview = document.getElementById('configPreview');
-      if (preview && data.content) preview.textContent = data.content;
-    } else {
-      statusEl.textContent = '{{ t("setup.config_generate_error") }}: ' + (data.error || '');
-      statusEl.style.color = 'var(--danger)';
-    }
-  } catch (e) {
-    statusEl.textContent = '{{ t("setup.config_generate_error") }}: ' + e.message;
-    statusEl.style.color = 'var(--danger)';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function applyOrtProperties() {
-  var btn = document.getElementById('applyBtn');
-  var statusEl = document.getElementById('applyStatus');
-  btn.disabled = true;
-  statusEl.textContent = '{{ t("setup.applying") }}...';
-  statusEl.style.color = 'var(--muted)';
-
-  var enabled = [];
-  document.querySelectorAll('.pm-checkbox:checked').forEach(function(cb) {
-    enabled.push(cb.getAttribute('data-ort-name'));
-  });
-
-  var customPaths = {};
-  document.querySelectorAll('.manual-path-input').forEach(function(input) {
-    var val = input.value.trim();
-    if (val) {
-      customPaths[input.getAttribute('data-ort-name')] = val;
-    }
-  });
-
-  try {
-    var res = await fetch('/setup/api/apply-ort-properties', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled_managers: enabled, custom_paths: customPaths }),
-    });
-    var data = await res.json();
-
-    if (data.success) {
-      statusEl.textContent = '{{ t("setup.apply_success") }} (' + data.enabled_count + ' package managers)';
-      statusEl.style.color = 'var(--success)';
-      var preview = document.getElementById('propsPreview');
-      if (preview && data.content) preview.textContent = data.content;
-    } else {
-      statusEl.textContent = '{{ t("setup.apply_error") }}: ' + (data.error || 'Unknown error');
-      statusEl.style.color = 'var(--danger)';
-    }
-  } catch (e) {
-    statusEl.textContent = '{{ t("setup.apply_error") }}: ' + e.message;
     statusEl.style.color = 'var(--danger)';
   } finally {
     btn.disabled = false;

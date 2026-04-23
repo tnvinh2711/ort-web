@@ -64,19 +64,74 @@
   </div>
   {% endif %}
 
+  <!-- AI Report Section -->
+  {% if job.ai_report_status or (job.status.value == 'success' and vuln_summary and vuln_summary.total > 0) %}
+  <div style="margin-top:16px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--surface); box-shadow:inset 0 0 0 1px var(--line-light);
+              {% if job.ai_report_status == 'success' %}background:var(--success-light); box-shadow:inset 0 0 0 1px var(--success-border);{% elif job.ai_report_status in ('failed', 'skipped') %}background:var(--danger-light); box-shadow:inset 0 0 0 1px var(--danger-border);{% elif job.ai_report_status == 'pending' %}background:var(--info-light); box-shadow:inset 0 0 0 1px var(--info-border);{% endif %}">
+    <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
+      <strong style="font-size:14px; color:var(--ink);">🤖 AI Report</strong>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span class="status-pill status-pill-{% if job.ai_report_status == 'pending' %}running{% elif job.ai_report_status == 'success' %}success{% elif job.ai_report_status in ('failed', 'skipped') %}failed{% else %}pending{% endif %}">
+          <span class="status-dot"></span>{{ job.ai_report_status or 'pending' }}
+        </span>
+        {% if job.ai_report_status != 'pending' and job.status.value == 'success' and vuln_summary and vuln_summary.total > 0 %}
+        <button type="button" class="btn-secondary btn-sm" onclick="retryAiReport('{{ job.job_id }}')" style="margin-left:4px;">Retry</button>
+        {% endif %}
+      </div>
+    </div>
+    {% if job.ai_report_status == 'pending' %}
+    <p style="margin:8px 0 0; color:var(--secondary); font-size:12px;">Generating AI suggestions...</p>
+    <div class="progress-bar progress-bar-indeterminate" style="margin-top:10px;">
+      <div class="progress-bar-fill"></div>
+    </div>
+    {% endif %}
+    {% if job.ai_report_summary %}
+    <p style="margin:8px 0 0; color:var(--secondary); font-size:12px;">{{ job.ai_report_summary }}</p>
+    {% endif %}
+
+    {% if ai_report and ai_report.output and ai_report.output.suggestions %}
+    <div style="margin-top:10px; overflow:auto;">
+      <table class="data-table" style="min-width:680px;">
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Current</th>
+            <th>Exact</th>
+            <th>Safe range</th>
+            <th>Reason</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for suggestion in ai_report.output.suggestions %}
+          <tr>
+            <td class="mono">{{ suggestion.package }}</td>
+            <td class="mono">{{ suggestion.current_version }}</td>
+            <td class="mono">{{ suggestion.suggested_exact_version }}</td>
+            <td class="mono">{{ suggestion.suggested_safe_range }}</td>
+            <td>{{ suggestion.rationale_short }}</td>
+            <td>{{ '%.2f'|format(suggestion.confidence or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <details id="job-log-details" style="margin-top:12px;" {% if job.status.value in ('pending', 'running') %}open{% endif %}>
     <summary style="cursor:pointer; font-size:12px; font-weight:500; color:var(--muted);">{{ t('dashboard.show_log') }}</summary>
     <pre id="job-log" style="max-height:350px; overflow:auto; white-space:pre-wrap; margin-top:8px;">{{ log_text }}</pre>
   </details>
-</section>
 
-<!-- Generated Files -->
-<section class="panel">
-  <h2>{{ t('results.generated_files') }}</h2>
+  <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line-light);">
+    <h2>{{ t('results.generated_files') }}</h2>
   <div id="job-files"
        hx-get="/jobs/{{ job.job_id }}/files?lang={{ lang }}"
        hx-trigger="load{% if job.status.value in ('pending', 'running') %}, every 5s{% endif %}"
        hx-swap="innerHTML">
+  </div>
   </div>
 </section>
 
@@ -145,3 +200,54 @@
 })();
 </script>
 {% endif %}
+
+<!-- Auto-reload panel while AI report is pending -->
+{% if job.ai_report_status == 'pending' %}
+<script>
+(function() {
+  var jobId = '{{ job.job_id }}';
+  var container = document.getElementById('job-panel-container');
+  
+  var checkAiStatus = function() {
+    if (!container) return;
+    fetch('/jobs/' + jobId + '/api/status').then(function(r) { return r.json(); }).then(function(data) {
+      if (data.ai_report_status && data.ai_report_status !== 'pending') {
+        // AI report is done, reload the panel
+        htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', {target: '#job-panel-container', swap: 'innerHTML'});
+      } else if (data.ai_report_status === 'pending') {
+        // Still pending, check again in 5 seconds
+        setTimeout(checkAiStatus, 5000);
+      }
+    }).catch(function() {
+      // On error, try again later
+      setTimeout(checkAiStatus, 5000);
+    });
+  };
+  
+  // Start checking after 2 seconds
+  setTimeout(checkAiStatus, 2000);
+})();
+</script>
+{% endif %}
+
+<script>
+async function retryAiReport(jobId) {
+  try {
+    var res = await fetch('/jobs/' + jobId + '/retry-ai-report', { method: 'POST' });
+    var data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || 'Cannot retry AI report right now.');
+      return;
+    }
+    // Reload the panel to reflect updated AI report status
+    var container = document.getElementById('job-panel-container');
+    if (container) {
+      htmx.ajax('GET', '/jobs/' + jobId + '/panel?lang={{ lang }}', {target: '#job-panel-container', swap: 'innerHTML'});
+    } else {
+      window.location.reload();
+    }
+  } catch (e) {
+    alert('Retry failed: ' + e.message);
+  }
+}
+</script>

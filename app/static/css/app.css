@@ -612,17 +612,56 @@ button {
 }
 
 .job-item {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   transition: all var(--transition-slow);
-  border-left: 3px solid var(--line);
+}
+
+.job-item-clickable {
+  cursor: pointer;
+}
+
+.job-expand-indicator {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--secondary);
+  background: var(--surface);
+  transition: transform var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.job-expand-indicator svg {
+  width: 14px;
+  height: 14px;
+}
+
+.job-item-expanded .job-expand-indicator {
+  transform: rotate(180deg);
+  color: var(--primary);
+  border-color: var(--primary-light);
+}
+
+.job-item-loading .job-expand-indicator {
+  opacity: 0.65;
+}
+
+.job-item-expanded {
+  border: 0;
+  box-shadow: none;
+}
+
+.job-item-expanded .job-inline-container {
+  margin-top: 0 !important;
 }
 
 .job-item:hover {
-  box-shadow: var(--shadow);
-  border-color: #CBD5E1;
+  box-shadow: none;
 }
 
 .job-item-success { border-left-color: var(--success); }
@@ -794,34 +833,47 @@ button {
    ============================================================ */
 .progress-bar {
   width: 100%;
-  height: 4px;
-  background: var(--line);
-  border-radius: 2px;
+  height: 8px;
+  background: var(--line-light);
+  border-radius: 999px;
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 12px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: var(--primary-light);
-  border-radius: 2px;
+  background: linear-gradient(90deg, var(--primary-light), var(--primary));
+  border-radius: 999px;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
 }
 
 .progress-bar-indeterminate .progress-bar-fill {
   width: 100%;
   transition: none;
-  animation: progress-pulse 3s ease-in-out infinite;
+  animation: progress-pulse 2.5s ease-in-out infinite;
 }
 
 @keyframes progress-pulse {
-  0%, 100% { opacity: 0.2; }
-  50% { opacity: 0.6; }
+  0% {
+    opacity: 0.6;
+    background: linear-gradient(90deg, var(--primary-light), var(--primary));
+  }
+  50% {
+    opacity: 1;
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
+  }
+  100% {
+    opacity: 0.6;
+    background: linear-gradient(90deg, var(--primary-light), var(--primary));
+  }
 }
 
 .progress-text {
   font-size: 11px;
   color: var(--muted);
-  margin-top: 3px;
+  margin-top: 6px;
 }
 
 /* ============================================================

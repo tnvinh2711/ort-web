@@ -61,48 +61,6 @@ def _load_ai_report(job: Job) -> dict | None:
         return None
 
 
-@router.get("/{job_id}", response_class=HTMLResponse)
-def job_detail(request: Request, job_id: str):
-    job = job_store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    lang = _lang(request)
-
-    log_text = ""
-    log_path = Path(job.log_file)
-    if log_path.exists():
-        log_text = log_path.read_text(encoding="utf-8", errors="replace")
-
-    artifact_files = _collect_artifact_files(run_dir=job_id)
-    ai_report = _load_ai_report(job)
-
-    is_htmx = request.headers.get("HX-Request")
-    return templates.TemplateResponse(
-        request,
-        "jobs/detail.html",
-        {
-            "request": request,
-            "lang": lang,
-            "t": lambda key: translate(lang, key),
-            "fmt_dt": _format_datetime,
-            "job": job,
-            "log_text": log_text,
-            "artifact_files": artifact_files,
-            "vuln_summary": parse_vuln_summary(job_id),
-            "ai_report": ai_report,
-            "base_template": "base_partial.html" if is_htmx else "base.html",
-            "status_map": {
-                "pending": translate(lang, "status.pending"),
-                "running": translate(lang, "status.running"),
-                "success": translate(lang, "status.success"),
-                "failed": translate(lang, "status.failed"),
-                "cancelled": translate(lang, "status.cancelled"),
-            },
-        },
-    )
-
-
 @router.get("/{job_id}/panel", response_class=HTMLResponse)
 def job_inline_panel(request: Request, job_id: str):
     """HTMX partial: inline job panel for dashboard."""
@@ -251,6 +209,20 @@ async def run_advise(job_id: str) -> JSONResponse:
     return JSONResponse({"job_id": new_job_id})
 
 
+@router.get("/{job_id}/api/status")
+async def get_job_status(job_id: str) -> JSONResponse:
+    """Get current job and AI report status for polling."""
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return JSONResponse({
+        "status": job.status.value,
+        "ai_report_status": job.ai_report_status or "not-started",
+        "ai_report_summary": job.ai_report_summary or ""
+    })
+
+
 @router.post("/{job_id}/retry-ai-report")
 async def retry_ai_report(job_id: str) -> JSONResponse:
     job = job_store.get_job(job_id)
@@ -279,5 +251,6 @@ def open_job_log(request: Request, job_id: str) -> RedirectResponse:
 
     _open_path(log_path.resolve())
 
-    referer = request.headers.get("referer") or f"/jobs/{job_id}"
+    lang = _lang(request)
+    referer = request.headers.get("referer") or f"/results?lang={lang}"
     return RedirectResponse(url=referer, status_code=303)
