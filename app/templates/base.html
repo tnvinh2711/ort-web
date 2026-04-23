@@ -35,6 +35,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           {{ t('nav.history') }}
         </a>
+        <a href="/setup/?lang={{ lang }}"
+           data-tab="setup"
+           class="sidebar-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 15.8 6.7 18.1l1-5.8-4.2-4.1 5.9-.9L12 2z"/></svg>
+          {{ t('nav.setup') }}
+        </a>
       </nav>
     </div>
 
@@ -68,12 +74,18 @@
 
     <div class="container" id="tab-dashboard" style="display:none"></div>
     <div class="container" id="tab-history" style="display:none"></div>
+    <div class="container" id="tab-setup" style="display:none"></div>
   </main>
 
 <script>
   var _lang = '{{ lang }}';
+  var _tabUrl = {
+    dashboard: '/',
+    history: '/results/',
+    setup: '/setup/',
+  };
   // Which tabs have been fully loaded into DOM (content + scripts initialised)
-  var _tabReady = { dashboard: false, history: false };
+  var _tabReady = { dashboard: false, history: false, setup: false };
   var _currentTab = null;
 
   function _runScripts(pane) {
@@ -95,12 +107,15 @@
     if (_currentTab === name && _tabReady[name]) return;
     _currentTab = name;
 
-    var other = name === 'dashboard' ? 'history' : 'dashboard';
-    document.getElementById('tab-' + other).style.display = 'none';
+    ['dashboard', 'history', 'setup'].forEach(function(tab) {
+      if (tab !== name) {
+        document.getElementById('tab-' + tab).style.display = 'none';
+      }
+    });
     document.getElementById('tab-' + name).style.display = '';
 
     _setActiveLink(name);
-    history.pushState({ tab: name }, '', name === 'dashboard' ? '/' : '/results/');
+    history.pushState({ tab: name }, '', _tabUrl[name] + '?lang=' + _lang);
 
     document.body.classList.remove('sidebar-open');
 
@@ -120,7 +135,7 @@
     // First visit: fetch partial content (HX-Request triggers base_partial.html)
     _tabReady[name] = true;
     var pane = document.getElementById('tab-' + name);
-    var url = (name === 'dashboard' ? '/' : '/results/') + '?lang=' + _lang;
+    var url = _tabUrl[name] + '?lang=' + _lang;
     fetch(url, { headers: { 'HX-Request': '1' } })
       .then(function(r) { return r.text(); })
       .then(function(html) {
@@ -132,14 +147,19 @@
 
   function setLang(l) {
     // Full reload to the current tab's URL with new lang
-    var path = (_currentTab === 'history') ? '/results/' : '/';
+    var path = _tabUrl[_currentTab] || '/';
     window.location.href = path + '?lang=' + l;
   }
 
   // Init: move server-rendered content to the correct pane, no extra fetch needed
   (function() {
     var path = window.location.pathname;
-    var name = path.startsWith('/results') ? 'history' : 'dashboard';
+    var name = 'dashboard';
+    if (path.startsWith('/results')) {
+      name = 'history';
+    } else if (path.startsWith('/setup')) {
+      name = 'setup';
+    }
     var pane = document.getElementById('tab-' + name);
     var ssr = document.getElementById('ssr-content');
 
@@ -158,14 +178,18 @@
   window.addEventListener('popstate', function(e) {
     var tab = e.state && e.state.tab
       ? e.state.tab
-      : (window.location.pathname.startsWith('/results') ? 'history' : 'dashboard');
+      : (window.location.pathname.startsWith('/results') ? 'history' : (window.location.pathname.startsWith('/setup') ? 'setup' : 'dashboard'));
     // Allow re-show even if same tab (back/fwd should always work)
     var prev = _currentTab;
     _currentTab = null;
     if (tab === prev) {
       // Just toggle display without pushing state again
       _currentTab = tab;
-      document.getElementById('tab-' + (tab === 'dashboard' ? 'history' : 'dashboard')).style.display = 'none';
+      ['dashboard', 'history', 'setup'].forEach(function(name) {
+        if (name !== tab) {
+          document.getElementById('tab-' + name).style.display = 'none';
+        }
+      });
       document.getElementById('tab-' + tab).style.display = '';
     } else {
       switchTab(tab);

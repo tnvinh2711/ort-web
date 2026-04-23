@@ -51,6 +51,16 @@ def _open_path(path: Path) -> None:
     raise RuntimeError("Unsupported platform for open file action")
 
 
+def _load_ai_report(job: Job) -> dict | None:
+    report_path = Path(job.ai_report_path) if job.ai_report_path else settings.artifacts_dir / job.job_id / "ai-suggestions.json"
+    if not report_path.exists():
+        return None
+    try:
+        return json.loads(report_path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return None
+
+
 @router.get("/{job_id}", response_class=HTMLResponse)
 def job_detail(request: Request, job_id: str):
     job = job_store.get_job(job_id)
@@ -65,6 +75,7 @@ def job_detail(request: Request, job_id: str):
         log_text = log_path.read_text(encoding="utf-8", errors="replace")
 
     artifact_files = _collect_artifact_files(run_dir=job_id)
+    ai_report = _load_ai_report(job)
 
     is_htmx = request.headers.get("HX-Request")
     return templates.TemplateResponse(
@@ -79,6 +90,7 @@ def job_detail(request: Request, job_id: str):
             "log_text": log_text,
             "artifact_files": artifact_files,
             "vuln_summary": parse_vuln_summary(job_id),
+            "ai_report": ai_report,
             "base_template": "base_partial.html" if is_htmx else "base.html",
             "status_map": {
                 "pending": translate(lang, "status.pending"),
@@ -116,6 +128,7 @@ def job_inline_panel(request: Request, job_id: str):
             "job": job,
             "log_text": log_text,
             "vuln_summary": parse_vuln_summary(job_id),
+            "ai_report": _load_ai_report(job),
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),
@@ -236,6 +249,22 @@ async def run_advise(job_id: str) -> JSONResponse:
     await job_queue.enqueue(new_job)
 
     return JSONResponse({"job_id": new_job_id})
+
+
+@router.post("/{job_id}/retry-ai-report")
+async def retry_ai_report(job_id: str) -> JSONResponse:
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.ai_report_status == "pending":
+        return JSONResponse({"success": False, "error": "AI report is already generating."}, status_code=409)
+
+    accepted = job_queue.retry_ai_report(job_id)
+    if not accepted:
+        return JSONResponse({"success": False, "error": "Cannot start AI report retry."}, status_code=400)
+
+    return JSONResponse({"success": True, "status": "pending"})
 
 
 @router.post("/{job_id}/open-log", response_class=RedirectResponse)

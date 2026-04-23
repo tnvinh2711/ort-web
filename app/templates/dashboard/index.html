@@ -35,11 +35,14 @@
 <section class="panel">
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <h2 style="margin:0;">{{ t('dashboard.ort_status') }}</h2>
-    {% if ort_path %}
-      <span class="status-pill status-pill-success"><span class="status-dot"></span>{{ t('dashboard.ort_installed') }}</span>
-    {% else %}
-      <span class="status-pill status-pill-failed"><span class="status-dot"></span>{{ t('dashboard.ort_not_installed') }}</span>
-    {% endif %}
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      {% if ort_path %}
+        <span class="status-pill status-pill-success"><span class="status-dot"></span>{{ t('dashboard.ort_installed') }}</span>
+      {% else %}
+        <span class="status-pill status-pill-failed"><span class="status-dot"></span>{{ t('dashboard.ort_not_installed') }}</span>
+      {% endif %}
+      <a href="/setup/?lang={{ lang }}" class="btn-secondary">{{ t('nav.setup') }}</a>
+    </div>
   </div>
 
   {% if ort_path %}

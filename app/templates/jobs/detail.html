@@ -46,6 +46,63 @@
   <div class="alert-warning" style="margin-top:12px;">{{ job.error_message }}</div>
   {% endif %}
 
+  {% if job.ai_report_status or (job.status.value == 'success' and vuln_summary and vuln_summary.total > 0) %}
+  <div style="margin-top:12px; padding:12px 14px; border-radius:var(--radius); border:1px solid var(--line-light); background:var(--panel);
+              {% if job.ai_report_status == 'success' %}border-color:var(--success);{% elif job.ai_report_status == 'failed' %}border-color:var(--danger);{% endif %}">
+    <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
+      <strong>AI Report</strong>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span class="status-pill status-pill-{% if job.ai_report_status == 'pending' %}running{% elif job.ai_report_status == 'success' %}success{% elif job.ai_report_status in ('failed', 'skipped') %}failed{% else %}pending{% endif %}">
+          <span class="status-dot"></span>{{ job.ai_report_status or 'not-started' }}
+        </span>
+        {% if job.ai_report_status != 'pending' and job.status.value == 'success' and vuln_summary and vuln_summary.total > 0 %}
+        <button type="button" class="btn-secondary btn-sm" onclick="retryAiReport('{{ job.job_id }}')">Retry AI report</button>
+        {% endif %}
+      </div>
+    </div>
+    {% if job.ai_report_status == 'pending' %}
+    <p style="margin:8px 0 0; color:var(--secondary); font-size:13px;">
+      AI report is generating in background. ORT reports are already available and not blocked.
+    </p>
+    <div class="progress-bar progress-bar-indeterminate" style="margin-top:10px;">
+      <div class="progress-bar-fill"></div>
+    </div>
+    {% endif %}
+    {% if job.ai_report_summary %}
+    <p style="margin:8px 0 0; color:var(--secondary); font-size:13px;">{{ job.ai_report_summary }}</p>
+    {% endif %}
+
+    {% if ai_report and ai_report.output and ai_report.output.suggestions %}
+    <div style="margin-top:10px; overflow:auto;">
+      <table class="data-table" style="min-width:680px;">
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Current</th>
+            <th>Exact</th>
+            <th>Safe range</th>
+            <th>Reason</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for suggestion in ai_report.output.suggestions %}
+          <tr>
+            <td class="mono">{{ suggestion.package }}</td>
+            <td class="mono">{{ suggestion.current_version }}</td>
+            <td class="mono">{{ suggestion.suggested_exact_version }}</td>
+            <td class="mono">{{ suggestion.suggested_safe_range }}</td>
+            <td>{{ suggestion.rationale_short }}</td>
+            <td>{{ '%.2f'|format(suggestion.confidence or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if vuln_summary and vuln_summary.total > 0 %}
   <div style="margin-top:12px; padding:12px 16px; background:var(--danger-light); border:1px solid var(--danger-border); border-radius:var(--radius); display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <span style="font-size:16px;">&#9888;</span>
@@ -140,6 +197,12 @@
         fetch('/jobs/' + jobId + '/log-text').then(function(r) { return r.text(); }).then(function(txt) {
           if (logEl && txt) logEl.textContent = txt;
         });
+        if (status === 'failed') {
+          // Allow AI suggestion task to start and refresh page state.
+          setTimeout(function() {
+            window.location.reload();
+          }, 1800);
+        }
       }
     } catch (_) {}
   });
@@ -148,4 +211,31 @@
 })();
 </script>
 {% endif %}
+
+{% if job.ai_report_status == 'pending' %}
+<script>
+(function() {
+  // Keep updating page until AI suggestions are generated or marked failed/skipped.
+  setTimeout(function() {
+    window.location.reload();
+  }, 5000);
+})();
+</script>
+{% endif %}
+
+<script>
+async function retryAiReport(jobId) {
+  try {
+    var res = await fetch('/jobs/' + jobId + '/retry-ai-report', { method: 'POST' });
+    var data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || 'Cannot retry AI report right now.');
+      return;
+    }
+    window.location.reload();
+  } catch (e) {
+    alert('Retry failed: ' + e.message);
+  }
+}
+</script>
 {% endblock %}

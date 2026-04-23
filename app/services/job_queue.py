@@ -12,6 +12,8 @@ from app.services.ort_installer import install_ort_local
 from app.services.job_store import job_store
 from app.services.log_stream import log_stream_hub
 from app.services.ort_executor import OrtExecutionError, run_ort_command
+from app.services.ai_suggestion_report import generate_ai_suggestion_report
+from app.services.vuln_summary import parse_vuln_summary
 
 
 def _extract_failure_reason(log_file: Path) -> str | None:
@@ -159,6 +161,59 @@ class JobQueue:
             finally:
                 self._queue.task_done()
 
+    def retry_ai_report(self, job_id: str) -> bool:
+        """Trigger AI report regeneration for an existing job without rerunning ORT."""
+        job = job_store.get_job(job_id)
+        if not job:
+            return False
+        if job.ai_report_status == "pending":
+            return False
+
+        job.ai_report_status = "pending"
+        job.ai_report_path = None
+        job.ai_report_summary = "Retry requested. Generating AI report in background..."
+        job_store.update_job(job)
+        asyncio.create_task(self._run_ai_suggestion_report(job_id))
+        return True
+
+    def _launch_ai_suggestion_task(self, job: Job, *, ephemeral: bool) -> None:
+        vuln = parse_vuln_summary(job.job_id)
+        has_vulnerabilities = bool(vuln and vuln.get("total", 0) > 0)
+        should_run = (
+            job.status == JobStatus.SUCCESS
+            and "analyze" in shlex.split(job.command)
+            and has_vulnerabilities
+        )
+        if ephemeral or not should_run:
+            return
+
+        job.ai_report_status = "pending"
+        job.ai_report_path = None
+        job.ai_report_summary = None
+        job_store.update_job(job)
+
+        asyncio.create_task(self._run_ai_suggestion_report(job.job_id))
+
+    async def _run_ai_suggestion_report(self, job_id: str) -> None:
+        job = job_store.get_job(job_id)
+        if not job:
+            return
+
+        result = await generate_ai_suggestion_report(
+            job_id=job.job_id,
+            error_message="Vulnerabilities detected by ORT advisor results.",
+            command=job.command,
+        )
+
+        latest = job_store.get_job(job_id)
+        if not latest:
+            return
+
+        latest.ai_report_status = str(result.get("status", "failed"))
+        latest.ai_report_path = str(result.get("path", "")) or None
+        latest.ai_report_summary = str(result.get("summary", "")) or None
+        job_store.update_job(latest)
+
     async def _run(self, job_id: str) -> None:
         ephemeral = job_id in self._ephemeral_jobs and self._ephemeral_jobs[job_id] is not None
         if ephemeral:
@@ -212,6 +267,7 @@ class JobQueue:
             job.finished_at = Job.now_iso()
             if not ephemeral:
                 job_store.update_job(job)
+                self._launch_ai_suggestion_task(job, ephemeral=ephemeral)
             await log_stream_hub.publish(job_id, {"type": "status", "status": job.status.value})
 
 

@@ -32,6 +32,9 @@ class Job:
     ort_install_path: str | None = None
     project_path: str | None = None
     detected_language: str | None = None
+    ai_report_status: str | None = None
+    ai_report_path: str | None = None
+    ai_report_summary: str | None = None
 
     @staticmethod
     def now_iso() -> str:
@@ -54,6 +57,9 @@ class Job:
             "ort_install_path": self.ort_install_path,
             "project_path": self.project_path,
             "detected_language": self.detected_language,
+            "ai_report_status": self.ai_report_status,
+            "ai_report_path": self.ai_report_path,
+            "ai_report_summary": self.ai_report_summary,
         }
 
     @classmethod
@@ -74,4 +80,7 @@ class Job:
             ort_install_path=row.get("ort_install_path"),
             project_path=row.get("project_path"),
             detected_language=row.get("detected_language"),
+            ai_report_status=row.get("ai_report_status"),
+            ai_report_path=row.get("ai_report_path"),
+            ai_report_summary=row.get("ai_report_summary"),
         )

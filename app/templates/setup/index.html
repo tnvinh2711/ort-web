@@ -118,7 +118,87 @@
   <pre id="configPreview">{{ config_yml_content if config_yml_content else t('setup.config_yml_empty') }}</pre>
 </section>
 
+<!-- Grok Config -->
+<section class="panel">
+  <h2>Grok (xAI)</h2>
+  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">Configure xAI API key and model for automatic dependency fix suggestions on failed jobs.</p>
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+    <label>
+      <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Model</span>
+      <input id="vertexModel" type="text" value="{{ vertex_model }}" placeholder="grok-4.20-reasoning" />
+    </label>
+    <label style="grid-column:1 / -1;">
+      <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">API Key</span>
+      <input id="vertexApiKey" type="password" placeholder="AIza..." />
+      {% if vertex_api_key_masked %}
+      <span style="display:block; margin-top:6px; font-size:12px; color:var(--muted);">Current: {{ vertex_api_key_masked }}</span>
+      {% endif %}
+    </label>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap;">
+    <button type="button" class="btn-primary" id="saveVertexBtn" onclick="saveVertexConfig()">Save Vertex Config</button>
+    <span id="vertexStatus" style="font-size:13px;"></span>
+  </div>
+</section>
+
 <script>
+async function loadVertexConfig() {
+  try {
+    var res = await fetch('/setup/api/vertex-config');
+    var data = await res.json();
+    if (data.model) document.getElementById('vertexModel').value = data.model;
+    var statusEl = document.getElementById('vertexStatus');
+    if (statusEl && data.configured) {
+      statusEl.textContent = 'Configured (' + (data.api_key_masked || '') + ')';
+      statusEl.style.color = 'var(--success)';
+    }
+  } catch (_) {
+    // Ignore load errors so setup page can still be used.
+  }
+}
+
+async function saveVertexConfig() {
+  var btn = document.getElementById('saveVertexBtn');
+  var statusEl = document.getElementById('vertexStatus');
+  var apiKey = document.getElementById('vertexApiKey').value.trim();
+  var model = document.getElementById('vertexModel').value.trim() || 'grok-4.20-reasoning';
+
+  if (!apiKey) {
+    statusEl.textContent = 'API key is required.';
+    statusEl.style.color = 'var(--danger)';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Saving...';
+  statusEl.style.color = 'var(--muted)';
+
+  try {
+    var res = await fetch('/setup/api/vertex-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        model: model,
+      }),
+    });
+    var data = await res.json();
+    if (data.success) {
+      statusEl.textContent = 'Saved: ' + (data.api_key_masked || 'configured');
+      statusEl.style.color = 'var(--success)';
+      document.getElementById('vertexApiKey').value = '';
+    } else {
+      statusEl.textContent = 'Save failed: ' + (data.error || 'unknown error');
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Save failed: ' + e.message;
+    statusEl.style.color = 'var(--danger)';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function redetectAll() {
   window.location.reload();
 }
@@ -260,5 +340,7 @@ async function applyOrtProperties() {
     btn.disabled = false;
   }
 }
+
+loadVertexConfig();
 </script>
 {% endblock %}

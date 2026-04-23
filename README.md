@@ -133,6 +133,7 @@ ort-web open -p 3000       # Custom port
 ort-web open --reload      # Dev mode with auto-reload
 ort-web update             # Check for new version + pull
 ort-web update -y          # Update without confirmation
+ort-web update --branch intergrate-ai  # Update from a specific branch
 ort-web version            # Show current version
 ort-web -V                 # Short version flag
 ```

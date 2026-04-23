@@ -35,7 +35,20 @@ class JobStore:
                     log_file text not null,
                     ort_install_path text,
                     project_path text,
-                    detected_language text
+                    detected_language text,
+                    ai_report_status text,
+                    ai_report_path text,
+                    ai_report_summary text
+                )
+                """
+            )
+
+            con.execute(
+                """
+                create table if not exists settings (
+                    key text primary key,
+                    value text not null,
+                    updated_at text not null
                 )
                 """
             )
@@ -52,6 +65,12 @@ class JobStore:
                     con.execute("alter table jobs add column project_path text")
                 if "detected_language" not in column_names:
                     con.execute("alter table jobs add column detected_language text")
+                if "ai_report_status" not in column_names:
+                    con.execute("alter table jobs add column ai_report_status text")
+                if "ai_report_path" not in column_names:
+                    con.execute("alter table jobs add column ai_report_path text")
+                if "ai_report_summary" not in column_names:
+                    con.execute("alter table jobs add column ai_report_summary text")
             except Exception:
                 pass
             
@@ -65,12 +84,14 @@ class JobStore:
                     job_id, name, command, work_dir, language, status,
                     created_at, started_at, finished_at, exit_code,
                     error_message, log_file, ort_install_path, project_path,
-                    detected_language
+                    detected_language, ai_report_status, ai_report_path,
+                    ai_report_summary
                 ) values (
                     :job_id, :name, :command, :work_dir, :language, :status,
                     :created_at, :started_at, :finished_at, :exit_code,
                     :error_message, :log_file, :ort_install_path, :project_path,
-                    :detected_language
+                    :detected_language, :ai_report_status, :ai_report_path,
+                    :ai_report_summary
                 )
                 """,
                 job.to_row(),
@@ -96,10 +117,32 @@ class JobStore:
                     log_file = :log_file,
                     ort_install_path = :ort_install_path,
                     project_path = :project_path,
-                    detected_language = :detected_language
+                    detected_language = :detected_language,
+                    ai_report_status = :ai_report_status,
+                    ai_report_path = :ai_report_path,
+                    ai_report_summary = :ai_report_summary
                 where job_id = :job_id
                 """,
                 job.to_row(),
+            )
+            con.commit()
+
+    def get_setting(self, key: str) -> str | None:
+        with self._connect() as con:
+            row = con.execute("select value from settings where key = ?", (key,)).fetchone()
+        return str(row[0]) if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into settings (key, value, updated_at)
+                values (?, ?, ?)
+                on conflict(key) do update set
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (key, value, Job.now_iso()),
             )
             con.commit()
 

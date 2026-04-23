@@ -95,6 +95,57 @@ def _current_git_tag() -> str | None:
 
 def cmd_update(args: argparse.Namespace) -> None:
     """Check for updates and pull latest."""
+    if args.branch:
+        branch = args.branch.strip()
+        if not branch:
+            print("Invalid branch name.")
+            sys.exit(1)
+
+        print(f"Updating from branch: {branch}")
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", branch],
+                check=True,
+                cwd=str(PROJECT_ROOT),
+            )
+
+            exists = subprocess.run(
+                ["git", "show-ref", "--verify", f"refs/heads/{branch}"],
+                check=False,
+                cwd=str(PROJECT_ROOT),
+            ).returncode == 0
+
+            if exists:
+                subprocess.run(
+                    ["git", "checkout", branch],
+                    check=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+                subprocess.run(
+                    ["git", "pull", "--ff-only", "origin", branch],
+                    check=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+            else:
+                subprocess.run(
+                    ["git", "checkout", "-b", branch, "--track", f"origin/{branch}"],
+                    check=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+
+            print("Installing dependencies...")
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-e", "."],
+                check=True,
+                cwd=str(PROJECT_ROOT),
+            )
+            print(f"Done! Updated from branch '{branch}'.")
+            print("Run `ort-web open` to start.")
+            return
+        except subprocess.CalledProcessError as exc:
+            print(f"Update from branch failed: {exc}")
+            sys.exit(1)
+
     print(f"Current version: v{__version__}")
 
     latest_tag = _fetch_latest_tag()
@@ -165,6 +216,7 @@ def main() -> None:
 
     # update
     p_update = sub.add_parser("update", help="Check for updates and pull latest")
+    p_update.add_argument("--branch", type=str, default="", help="Update from a specific branch")
     p_update.add_argument("-y", "--yes", action="store_true", help="Skip confirmation")
     p_update.set_defaults(func=cmd_update)
 
