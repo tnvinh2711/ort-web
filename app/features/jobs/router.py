@@ -22,6 +22,7 @@ from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
 from app.features.analysis.vuln_summary import parse_vuln_summary
 from app.features.results.router import _collect_artifact_files
+from app.features.setup.vertex_config_store import get_vertex_config
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 templates = Jinja2Templates(directory="app/templates")
@@ -70,6 +71,7 @@ def job_inline_panel(request: Request, job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     lang = _lang(request)
+    ai_key_configured = bool(get_vertex_config().api_key.strip())
 
     log_text = ""
     log_path = Path(job.log_file)
@@ -88,6 +90,7 @@ def job_inline_panel(request: Request, job_id: str):
             "log_text": log_text,
             "vuln_summary": parse_vuln_summary(job_id),
             "ai_report": _load_ai_report(job),
+            "ai_key_configured": ai_key_configured,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),
@@ -95,6 +98,46 @@ def job_inline_panel(request: Request, job_id: str):
                 "failed": translate(lang, "status.failed"),
                 "cancelled": translate(lang, "status.cancelled"),
             },
+        },
+    )
+
+
+@router.get("/{job_id}", response_class=HTMLResponse)
+def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
+    """Standalone job detail page (no inline expand)."""
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    lang = _lang(request)
+    ai_key_configured = bool(get_vertex_config().api_key.strip())
+    log_text = ""
+    log_path = Path(job.log_file)
+    if log_path.exists():
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+
+    is_htmx = request.headers.get("HX-Request")
+    return templates.TemplateResponse(
+        request,
+        "jobs/detail.html",
+        {
+            "request": request,
+            "lang": lang,
+            "t": lambda key: translate(lang, key),
+            "fmt_dt": _format_datetime,
+            "job": job,
+            "log_text": log_text,
+            "vuln_summary": parse_vuln_summary(job_id),
+            "ai_report": _load_ai_report(job),
+            "ai_key_configured": ai_key_configured,
+            "status_map": {
+                "pending": translate(lang, "status.pending"),
+                "running": translate(lang, "status.running"),
+                "success": translate(lang, "status.success"),
+                "failed": translate(lang, "status.failed"),
+                "cancelled": translate(lang, "status.cancelled"),
+            },
+            "base_template": "base_partial.html" if is_htmx else "base.html",
         },
     )
 

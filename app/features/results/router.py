@@ -14,6 +14,7 @@ from app.features.shared.language_detector import get_language_options
 
 # Files to hide from the results listing.
 _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
+_HIDDEN_SUFFIXES = {".xml", ".yml", ".yaml"}
 
 router = APIRouter(prefix="/results", tags=["results"])
 templates = Jinja2Templates(directory="app/templates")
@@ -47,7 +48,13 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
     if not search_root.exists() or not search_root.is_dir():
         return []
 
-    files: list[Path] = [p for p in search_root.rglob("*") if p.is_file() and p.name not in _HIDDEN_FILENAMES]
+    files: list[Path] = [
+        p
+        for p in search_root.rglob("*")
+        if p.is_file()
+        and p.name not in _HIDDEN_FILENAMES
+        and p.suffix.lower() not in _HIDDEN_SUFFIXES
+    ]
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     result: list[dict[str, str | int | bool]] = []
 

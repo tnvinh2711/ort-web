@@ -1,0 +1,14 @@
+{% extends base_template %}
+{% block content %}
+<section class="hero">
+  <h1>{{ t('nav.history') }}</h1>
+  <p style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <a class="btn-secondary btn-sm" href="/results/?lang={{ lang }}">&#8592; {{ t('nav.history') }}</a>
+    <span style="color:var(--muted); font-size:12px;" class="mono">{{ job.job_id }}</span>
+  </p>
+</section>
+
+<div id="job-panel-container">
+  {% include "jobs/inline_panel.html" %}
+</div>
+{% endblock %}

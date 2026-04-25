@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+from glob import glob
 from pathlib import Path
 from typing import Callable, Awaitable
 
@@ -94,19 +95,53 @@ def _find_java_21_home() -> Path | None:
                 return result
 
     elif system == "Windows":
+        seen: set[str] = set()
+
+        def _check_candidates(candidates: list[Path]) -> Path | None:
+            for home in candidates:
+                key = str(home).lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                result = _check(home)
+                if result:
+                    return result
+            return None
+
+        # Common exact roots.
         for base_env in ("LOCALAPPDATA", "ProgramFiles", "ProgramW6432"):
             base = os.environ.get(base_env, "")
             if not base:
                 continue
-            for subdir in [
-                "Eclipse Adoptium\\jdk-21",
-                "Microsoft\\jdk-21",
-                "Java\\jdk-21",
-                "Java\\jdk-21.0",
-            ]:
-                result = _check(Path(base) / subdir)
-                if result:
-                    return result
+            result = _check_candidates(
+                [
+                    Path(base) / "Eclipse Adoptium" / "jdk-21",
+                    Path(base) / "Microsoft" / "jdk-21",
+                    Path(base) / "Java" / "jdk-21",
+                    Path(base) / "Java" / "jdk-21.0",
+                ]
+            )
+            if result:
+                return result
+
+        # Versioned JDK folders created by winget/Adoptium (e.g. jdk-21.0.6+7).
+        versioned_patterns: list[str] = []
+        for base_env in ("LOCALAPPDATA", "ProgramFiles", "ProgramW6432"):
+            base = os.environ.get(base_env, "")
+            if not base:
+                continue
+            versioned_patterns.extend(
+                [
+                    str(Path(base) / "Eclipse Adoptium" / "jdk-21*"),
+                    str(Path(base) / "Microsoft" / "jdk-21*"),
+                    str(Path(base) / "Java" / "jdk-21*"),
+                ]
+            )
+
+        versioned_candidates = [Path(p) for pattern in versioned_patterns for p in glob(pattern)]
+        result = _check_candidates(versioned_candidates)
+        if result:
+            return result
 
     # Last resort: java in PATH
     java_in_path = shutil.which("java")
@@ -152,6 +187,9 @@ async def _ensure_java_21(
         await proc.wait()
         return proc.returncode
 
+    async def _stream_windows_cmd(command: str) -> int:
+        return await _stream_proc("cmd", "/c", command)
+
     if system == "Darwin":
         brew = shutil.which("brew")
         if not brew:
@@ -186,17 +224,53 @@ async def _ensure_java_21(
 
     elif system == "Windows":
         winget = shutil.which("winget")
+        installed = False
         if winget:
             await log("Installing Java 21 via winget...")
-            rc = await _stream_proc(
-                winget, "install", "Microsoft.OpenJDK.21",
-                "--silent", "--accept-package-agreements", "--accept-source-agreements",
-            )
-            if rc != 0:
-                await log("winget install failed. Install manually from: https://adoptium.net")
-                return None
+            winget_candidates = [
+                "Microsoft.OpenJDK.21",
+                "EclipseAdoptium.Temurin.21.JDK",
+            ]
+            for pkg_id in winget_candidates:
+                await log(f"Trying package: {pkg_id}")
+                rc = await _stream_proc(
+                    winget,
+                    "install",
+                    "--id",
+                    pkg_id,
+                    "--exact",
+                    "--silent",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                    "--disable-interactivity",
+                )
+                if rc == 0:
+                    installed = True
+                    break
+
+            if not installed:
+                await log("winget install did not complete successfully. Trying fallback installers...")
         else:
-            await log("winget not found. Install Java 21 manually from: https://adoptium.net")
+            await log("winget not found. Trying fallback installers...")
+
+        if not installed:
+            choco = shutil.which("choco")
+            if choco:
+                await log("Trying Java 21 install via Chocolatey...")
+                rc = await _stream_windows_cmd("choco install temurin21 -y --no-progress")
+                if rc == 0:
+                    installed = True
+
+        if not installed:
+            scoop = shutil.which("scoop")
+            if scoop:
+                await log("Trying Java 21 install via Scoop...")
+                rc = await _stream_windows_cmd("scoop install temurin21-jdk")
+                if rc == 0:
+                    installed = True
+
+        if not installed:
+            await log("Could not auto-install Java 21 on Windows. Install manually from: https://adoptium.net")
             return None
     else:
         await log(f"Auto-install not supported on {system}. Install Java 21 manually.")
@@ -206,6 +280,19 @@ async def _ensure_java_21(
     java_home = await asyncio.to_thread(_find_java_21_home)
     if java_home:
         await log(f"Java 21 installed successfully at {java_home}")
+        if system == "Windows":
+            # Persist JAVA_HOME/PATH for future shells so ORT works outside this process too.
+            try:
+                java_home_str = str(java_home)
+                await _stream_proc("setx", "JAVA_HOME", java_home_str)
+
+                current_user_path = os.environ.get("PATH", "")
+                java_bin = str(java_home / "bin")
+                if java_bin.lower() not in current_user_path.lower():
+                    await _stream_proc("setx", "PATH", f"{current_user_path};{java_bin}")
+                await log("JAVA_HOME/PATH updated for current user (new terminals only).")
+            except Exception as exc:
+                await log(f"Could not persist JAVA_HOME/PATH automatically: {exc}")
     else:
         await log("Java installed but could not locate JAVA_HOME — will try without explicit JAVA_HOME.")
     return java_home

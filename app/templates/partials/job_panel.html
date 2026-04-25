@@ -8,7 +8,7 @@
   {% if job.error_message %}
   <div class="alert-warning" style="margin:0 0 8px;">{{ job.error_message }}</div>
   {% endif %}
-  <pre id="job-log-{{ job.job_id }}" style="max-height:70vh; overflow:auto; white-space:pre-wrap;">{{ log_text }}</pre>
+  <pre id="job-log-{{ job.job_id }}" class="log-console" style="max-height:70vh; overflow:auto; white-space:pre-wrap;">{{ log_text }}</pre>
 </article>
 
 {% if job.status.value in ('pending', 'running') %}

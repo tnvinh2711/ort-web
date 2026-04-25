@@ -70,8 +70,10 @@ async def run_ort_command(job_id: str, command: str, work_dir: str, log_file: Pa
     env = os.environ.copy()
     env.setdefault("LC_ALL", "en_US.UTF-8")
 
-    # Include project venv/bin so tools like python-inspector are found by ORT.
-    venv_bin = Path(__file__).resolve().parent.parent.parent / ".venv" / "bin"
+    # Include project venv/bin so tools like python-inspector and scancode are found by ORT.
+    venv_bin = Path(__file__).resolve().parent.parent.parent / ".venv" / (
+        "Scripts" if os.name == "nt" else "bin"
+    )
     extra_paths = [str(settings.ort_install_dir), str(settings.bin_dir)]
     if venv_bin.is_dir():
         extra_paths.append(str(venv_bin))

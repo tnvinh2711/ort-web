@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import time
@@ -38,8 +39,12 @@ def _is_ort_install_healthy(binary_path: Path) -> bool:
     if not binary_path.exists():
         return False
     try:
+        cmd = [str(binary_path), "--version"]
+        if os.name == "nt" and binary_path.suffix.lower() == ".bat":
+            cmd = ["cmd", "/c", *cmd]
+
         result = subprocess.run(
-            [str(binary_path), "--version"],
+            cmd,
             capture_output=True,
             text=True,
             timeout=20,
@@ -62,21 +67,38 @@ def _detect_ort_on_disk() -> str | None:
 
     import shutil as _shutil
 
-    # Candidate paths: default install dir, runtime bin dir, PATH
+    # Candidate paths: default install dir, runtime bin dir, PATH.
+    # On Windows, ORT launcher is usually ort.bat.
     candidates: list[Path] = [
         settings.ort_install_dir / "ort",
         settings.bin_dir / "ort",
     ]
+    if os.name == "nt":
+        candidates.extend(
+            [
+                settings.ort_install_dir / "ort.bat",
+                settings.bin_dir / "ort.bat",
+            ]
+        )
+
     # Also check the .ort-dist deployment under both dirs
     for parent in (settings.ort_install_dir, settings.bin_dir):
         dist_bin = parent / ".ort-dist" / "current" / "bin" / "ort"
         if dist_bin not in candidates:
             candidates.append(dist_bin)
+        if os.name == "nt":
+            dist_bat = parent / ".ort-dist" / "current" / "bin" / "ort.bat"
+            if dist_bat not in candidates:
+                candidates.append(dist_bat)
 
     # shutil.which checks PATH
     which_ort = _shutil.which("ort")
     if which_ort:
         candidates.append(Path(which_ort))
+    if os.name == "nt":
+        which_ort_bat = _shutil.which("ort.bat")
+        if which_ort_bat:
+            candidates.append(Path(which_ort_bat))
 
     found: str | None = None
     for path in candidates:
@@ -319,12 +341,26 @@ def api_pick_directory() -> JSONResponse:
         if system == "Windows":
             ps_script = (
                 "Add-Type -AssemblyName System.Windows.Forms; "
-                "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
-                "$f.Description = 'Select project folder'; "
-                "if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath } else { '' }"
+                "$selected = ''; "
+                "try { "
+                "  $f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                "  $f.Description = 'Select project folder'; "
+                "  $f.UseDescriptionForTitle = $true; "
+                "  if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
+                "    $selected = $f.SelectedPath; "
+                "  } "
+                "} catch { } "
+                "if (-not $selected) { "
+                "  try { "
+                "    $shell = New-Object -ComObject Shell.Application; "
+                "    $folder = $shell.BrowseForFolder(0, 'Select project folder', 0, 0); "
+                "    if ($folder) { $selected = $folder.Self.Path } "
+                "  } catch { } "
+                "} "
+                "$selected"
             )
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_script],
+                ["powershell.exe", "-NoProfile", "-STA", "-Command", ps_script],
                 capture_output=True,
                 text=True,
                 check=False,

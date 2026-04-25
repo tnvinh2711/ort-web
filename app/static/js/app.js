@@ -6,6 +6,7 @@
 
 	var _streams = new Map();
 	var _pollers = new Map();
+	var _statusPollers = new Map();
 
 	function _safeCall(fn, payload) {
 		try {
@@ -124,9 +125,68 @@
 		_pollers.delete(jobId);
 	}
 
+	function startJobStatusFallbackPoll(opts) {
+		if (!opts || !opts.jobId) {
+			return;
+		}
+
+		stopJobStatusFallbackPoll(opts.jobId);
+
+		var delayMs = typeof opts.intervalMs === 'number' ? opts.intervalMs : 4000;
+		var attempts = 0;
+		var maxAttempts = typeof opts.maxAttempts === 'number' ? opts.maxAttempts : 450;
+		var timer = null;
+
+		function schedule(nextDelay) {
+			timer = window.setTimeout(run, nextDelay);
+			_statusPollers.set(opts.jobId, timer);
+		}
+
+		async function run() {
+			attempts += 1;
+			if (attempts > maxAttempts) {
+				stopJobStatusFallbackPoll(opts.jobId);
+				return;
+			}
+
+			if (document.hidden) {
+				schedule(Math.min(delayMs * 2, 20000));
+				return;
+			}
+
+			try {
+				var response = await fetch('/jobs/' + opts.jobId + '/api/status', {
+					headers: { 'Cache-Control': 'no-cache' },
+				});
+				var data = await response.json();
+				_safeCall(opts.onTick, data);
+
+				if (data.status && ['success', 'failed', 'cancelled'].indexOf(data.status) >= 0) {
+					stopJobStatusFallbackPoll(opts.jobId);
+					_safeCall(opts.onDone, data);
+					return;
+				}
+			} catch (_) {}
+
+			schedule(delayMs);
+		}
+
+		schedule(delayMs);
+	}
+
+	function stopJobStatusFallbackPoll(jobId) {
+		var timer = _statusPollers.get(jobId);
+		if (!timer) {
+			return;
+		}
+		clearTimeout(timer);
+		_statusPollers.delete(jobId);
+	}
+
 	function teardownAll() {
 		Array.from(_streams.keys()).forEach(detachJobStream);
 		Array.from(_pollers.keys()).forEach(stopAiFallbackPoll);
+		Array.from(_statusPollers.keys()).forEach(stopJobStatusFallbackPoll);
 	}
 
 	window.ORTRealtime = {
@@ -134,6 +194,8 @@
 		detachJobStream: detachJobStream,
 		startAiFallbackPoll: startAiFallbackPoll,
 		stopAiFallbackPoll: stopAiFallbackPoll,
+		startJobStatusFallbackPoll: startJobStatusFallbackPoll,
+		stopJobStatusFallbackPoll: stopJobStatusFallbackPoll,
 		teardownAll: teardownAll,
 	};
 })();

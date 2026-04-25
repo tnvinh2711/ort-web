@@ -1,17 +1,12 @@
 {% if jobs %}
 <div class="job-list">
   {% for job in jobs %}
-  <div class="job-item job-item-{{ job.status.value }} job-item-clickable" data-job-id="{{ job.job_id }}" data-job-status="{{ job.status.value }}" data-expanded="0" onclick="onJobItemClick(event, '{{ job.job_id }}')">
+  <div class="job-item job-item-{{ job.status.value }}" data-job-id="{{ job.job_id }}" data-job-status="{{ job.status.value }}">
     <div class="job-item-summary">
       <section class="panel" style="margin-top:0; border-left:4px solid {% if job.status.value == 'success' %}var(--success){% elif job.status.value == 'failed' %}var(--danger){% elif job.status.value == 'running' %}var(--primary-light){% else %}var(--warning){% endif %};">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <h2 style="margin:0;">{{ job.name }}</h2>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="job-expand-indicator" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </span>
             <span class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ status_map[job.status.value] }}</span>
           </div>
         </div>
@@ -71,12 +66,10 @@
         {% endif %}
 
         <div style="display:flex; justify-content:flex-end; margin-top:10px;">
-          <button type="button" class="btn-secondary btn-sm" onclick="event.stopPropagation(); toggleJobExpand('{{ job.job_id }}', true);">{{ t('dashboard.view_results_btn') }}</button>
+          <a class="btn-secondary btn-sm" href="/jobs/{{ job.job_id }}?lang={{ lang }}">{{ t('dashboard.view_results_btn') }}</a>
         </div>
       </section>
     </div>
-
-    <div id="job-inline-{{ job.job_id }}" class="job-inline-container" style="display:none; margin-top:12px;"></div>
   </div>
   {% endfor %}
 </div>

@@ -14,7 +14,9 @@ from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
 from app.features.ort.executor import OrtExecutionError, run_ort_command
 from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
+from app.features.analysis.component_inventory_csv import generate_component_inventory_csv
 from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.setup.vertex_config_store import get_vertex_config
 
 
 def _extract_failure_reason(log_file: Path) -> str | None:
@@ -71,15 +73,38 @@ async def _log_info(job_id: str, log_file: Path, message: str) -> None:
 async def _run_post_analyze_pipeline(
     job_id: str, analyze_command: str, work_dir: str, log_file: Path
 ) -> int:
-    """Chain after analyze: advise (OSV) → report. Returns the final exit code."""
+    """Chain after analyze: scan -> advise (OSV) -> report -> inventory CSV."""
     output_dir = _extract_output_dir(analyze_command)
     if not output_dir:
         return 0
 
     analyzer_result = output_dir / "analyzer-result.yml"
+    scan_result = output_dir / "scan-result.yml"
     advisor_result = output_dir / "advisor-result.yml"
 
-    # Step 1: Advise
+    # Step 1: Scan (best-effort — requires an external scanner like ScanCode to be installed).
+    # ScanCode install: pip install scancode-toolkit
+    scancode_available = shutil.which("scancode") or shutil.which("scancode.exe")
+    scan_exit = 1
+    if scancode_available:
+        scan_cmd = (
+            f"ort -P ort.forceOverwrite=true scan "
+            f"-i {shlex.quote(str(analyzer_result))} "
+            f"-o {shlex.quote(str(output_dir))} "
+            f"--scanners ScanCode"
+        )
+        await _log_info(job_id, log_file, "Running Scanner (ScanCode)...")
+        scan_exit = await run_ort_command(job_id, scan_cmd, work_dir, log_file)
+        if scan_exit != 0:
+            await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
+    else:
+        await _log_info(
+            job_id, log_file,
+            "Scanner skipped: ScanCode not found in PATH. "
+            "Install with: pip install scancode-toolkit"
+        )
+
+    # Step 2: Advise
     advise_cmd = (
         f"ort -P ort.forceOverwrite=true advise "
         f"-i {shlex.quote(str(analyzer_result))} "
@@ -89,8 +114,14 @@ async def _run_post_analyze_pipeline(
     await _log_info(job_id, log_file, "Analyze completed. Running Advisor (OSV)...")
     advise_exit = await run_ort_command(job_id, advise_cmd, work_dir, log_file)
 
-    # Step 2: Report — use advisor-result when advise succeeded, else fall back to analyzer-result
-    input_result = advisor_result if (advise_exit == 0 and advisor_result.exists()) else analyzer_result
+    # Step 3: Report — prefer advisor, then scan (if available), then analyzer.
+    if advise_exit == 0 and advisor_result.exists():
+        input_result = advisor_result
+    elif scan_exit == 0 and scan_result.exists():
+        input_result = scan_result
+    else:
+        input_result = analyzer_result
+
     report_cmd = (
         f"ort -P ort.forceOverwrite=true report "
         f"-i {shlex.quote(str(input_result))} "
@@ -104,6 +135,16 @@ async def _run_post_analyze_pipeline(
         created = _create_analyzer_html_aliases(output_dir)
         for alias in created:
             await _log_info(job_id, log_file, f"Created report alias: {alias.name}")
+
+    # Step 4: CSV inventory (best effort, should not fail pipeline).
+    try:
+        csv_path = generate_component_inventory_csv(output_dir)
+        if csv_path:
+            await _log_info(job_id, log_file, f"Generated component inventory CSV: {csv_path.name}")
+        else:
+            await _log_info(job_id, log_file, "Skipped component inventory CSV: no analyzer/scan package data.")
+    except Exception as exc:
+        await _log_info(job_id, log_file, f"Component inventory CSV generation failed: {exc}")
 
     return report_exit
 
@@ -167,6 +208,8 @@ class JobQueue:
         job = job_store.get_job(job_id)
         if not job:
             return False
+        if not get_vertex_config().api_key.strip():
+            return False
         if job.ai_report_status == "pending":
             return False
 
@@ -190,10 +233,12 @@ class JobQueue:
     def _launch_ai_suggestion_task(self, job: Job, *, ephemeral: bool) -> None:
         vuln = parse_vuln_summary(job.job_id)
         has_vulnerabilities = bool(vuln and vuln.get("total", 0) > 0)
+        ai_key_configured = bool(get_vertex_config().api_key.strip())
         should_run = (
             job.status == JobStatus.SUCCESS
             and "analyze" in shlex.split(job.command)
             and has_vulnerabilities
+            and ai_key_configured
         )
         if ephemeral or not should_run:
             return

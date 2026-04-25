@@ -160,7 +160,7 @@
   (function() {
     var path = window.location.pathname;
     var name = 'dashboard';
-    if (path.startsWith('/results')) {
+    if (path.startsWith('/results') || path.startsWith('/jobs/')) {
       name = 'history';
     } else if (path.startsWith('/setup')) {
       name = 'setup';
@@ -183,7 +183,7 @@
   window.addEventListener('popstate', function(e) {
     var tab = e.state && e.state.tab
       ? e.state.tab
-      : (window.location.pathname.startsWith('/results') ? 'history' : (window.location.pathname.startsWith('/setup') ? 'setup' : 'dashboard'));
+      : ((window.location.pathname.startsWith('/results') || window.location.pathname.startsWith('/jobs/')) ? 'history' : (window.location.pathname.startsWith('/setup') ? 'setup' : 'dashboard'));
     // Allow re-show even if same tab (back/fwd should always work)
     var prev = _currentTab;
     _currentTab = null;
