@@ -1,11 +1,11 @@
 {
-  "app.title": "ORT Local Visualizer",
+  "app.title": "OSSGuard Local Visualizer",
   "nav.dashboard": "Dashboard",
   "nav.tools": "Core Tools",
   "nav.commands": "Supporting Commands",
   "nav.plugins": "Plugin Explorer",
   "nav.results": "Results",
-  "hero.title": "Visualize the full ORT capability set locally",
+  "hero.title": "Visualize the full OSSGuard capability set locally",
   "hero.subtitle": "Run real ORT commands, stream logs in real time, and inspect artifacts, plugins, and config ecosystem.",
   "dashboard.new_job": "Create new job",
   "dashboard.command": "ORT command",
