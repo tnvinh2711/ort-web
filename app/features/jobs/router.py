@@ -21,6 +21,7 @@ from app.features.jobs.event_contract import connected_payload, heartbeat_payloa
 from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
 from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.analysis.markdown_report import generate_markdown_report
 from app.features.results.router import _collect_artifact_files
 from app.features.setup.vertex_config_store import get_vertex_config
 
@@ -164,6 +165,32 @@ def job_files_partial(request: Request, job_id: str):
     lang = _lang(request)
     artifact_files = _collect_artifact_files(run_dir=job_id)
 
+    return templates.TemplateResponse(
+        request,
+        "jobs/files_partial.html",
+        {
+            "request": request,
+            "lang": lang,
+            "t": lambda key: translate(lang, key),
+            "artifact_files": artifact_files,
+        },
+    )
+
+
+@router.post("/{job_id}/generate-markdown-report", response_class=HTMLResponse)
+def generate_job_markdown_report(request: Request, job_id: str):
+    """Refresh the generated Markdown report for a completed job."""
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    output_dir = (settings.artifacts_dir / job_id).resolve()
+    report_path = generate_markdown_report(output_dir)
+    if not report_path:
+        raise HTTPException(status_code=404, detail="No ORT result data found for this job.")
+
+    lang = _lang(request)
+    artifact_files = _collect_artifact_files(run_dir=job_id)
     return templates.TemplateResponse(
         request,
         "jobs/files_partial.html",

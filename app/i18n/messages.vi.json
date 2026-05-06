@@ -1,5 +1,5 @@
 {
-  "app.title": "ORT Local Visualizer",
+  "app.title": "OSS Guard Local Visualizer",
   "nav.dashboard": "Bảng điều khiển",
   "nav.tools": "Công cụ",
   "nav.commands": "Lệnh hỗ trợ",
@@ -60,6 +60,7 @@
   "results.actions": "Hành động",
   "results.visualize": "Xem trực quan",
   "results.download": "Tải xuống",
+  "results.generate_md": "Tạo .md",
   "results.showing_latest": "Đang hiển thị lần chạy mới nhất:",
   "results.show_all": "Hiển thị tất cả file",
   "results.showing_all": "Đang hiển thị tất cả artifact.",

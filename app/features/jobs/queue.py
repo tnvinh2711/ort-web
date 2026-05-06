@@ -15,6 +15,7 @@ from app.features.jobs.log_stream import log_stream_hub
 from app.features.ort.executor import OrtExecutionError, run_ort_command
 from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
 from app.features.analysis.component_inventory_csv import generate_component_inventory_csv
+from app.features.analysis.markdown_report import generate_markdown_report
 from app.features.analysis.vuln_summary import parse_vuln_summary
 from app.features.setup.vertex_config_store import get_vertex_config
 
@@ -68,6 +69,20 @@ async def _log_info(job_id: str, log_file: Path, message: str) -> None:
     with log_file.open("a", encoding="utf-8") as out:
         out.write(line)
     await log_stream_hub.publish(job_id, make_event(EVENT_LOG, line=line))
+
+
+async def _generate_markdown_report_for_job(
+    job_id: str, output_dir: Path, log_file: Path, *, reason: str = ""
+) -> None:
+    try:
+        md_path = generate_markdown_report(output_dir)
+        if md_path:
+            suffix = f" ({reason})" if reason else ""
+            await _log_info(job_id, log_file, f"Generated Markdown report{suffix}: {md_path}")
+        else:
+            await _log_info(job_id, log_file, "Skipped Markdown report: no ORT result data.")
+    except Exception as exc:
+        await _log_info(job_id, log_file, f"Markdown report generation failed: {exc}")
 
 
 async def _run_post_analyze_pipeline(
@@ -145,6 +160,9 @@ async def _run_post_analyze_pipeline(
             await _log_info(job_id, log_file, "Skipped component inventory CSV: no analyzer/scan package data.")
     except Exception as exc:
         await _log_info(job_id, log_file, f"Component inventory CSV generation failed: {exc}")
+
+    # Step 5: Markdown report (automatic, best effort).
+    await _generate_markdown_report_for_job(job_id, output_dir, log_file, reason="ORT pipeline")
 
     return report_exit
 
@@ -315,10 +333,17 @@ class JobQueue:
                     job.ort_install_path = ort_path
             else:
                 exit_code = await run_ort_command(job.job_id, job.command, job.work_dir, log_file)
-                if exit_code == 0 and "analyze" in shlex.split(job.command):
+                command_tokens = shlex.split(job.command)
+                if exit_code == 0 and "analyze" in command_tokens:
                     exit_code = await _run_post_analyze_pipeline(
                         job.job_id, job.command, job.work_dir, log_file
                     )
+                elif exit_code == 0 and "report" in command_tokens:
+                    output_dir = _extract_output_dir(job.command)
+                    if output_dir:
+                        await _generate_markdown_report_for_job(
+                            job.job_id, output_dir, log_file, reason="ORT report"
+                        )
             job.exit_code = exit_code
             job.status = JobStatus.SUCCESS if exit_code == 0 else JobStatus.FAILED
             if job.status == JobStatus.FAILED and not job.error_message:

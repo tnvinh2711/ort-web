@@ -1,5 +1,5 @@
 {
-  "app.title": "OSSGuard Local Visualizer",
+  "app.title": "OSS Guard Local Visualizer",
   "nav.dashboard": "Dashboard",
   "nav.tools": "Core Tools",
   "nav.commands": "Supporting Commands",
@@ -60,6 +60,7 @@
   "results.actions": "Actions",
   "results.visualize": "Visualize",
   "results.download": "Download",
+  "results.generate_md": "Generate .md",
   "results.showing_latest": "Showing latest run:",
   "results.show_all": "Show all files",
   "results.showing_all": "Showing all artifact files.",

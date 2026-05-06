@@ -6,11 +6,22 @@ import os
 import platform
 
 
+# Default folder for automatically generated Markdown report files.
+# Change this value if you want .md reports to be stored in another source-configured folder.
+# Example absolute path: DEFAULT_MARKDOWN_REPORTS_DIR = Path("/Users/your-user/ort-markdown-reports")
+DEFAULT_MARKDOWN_REPORTS_DIR = Path("runtime") / "markdown-reports"
+
+
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = "ORT Local Visualizer"
+    app_name: str = "OSS Guard Local Visualizer"
     default_language: str = "en"
     runtime_dir: Path = Path("runtime")
+    # Markdown reports are generated automatically. Change this source value or
+    # set ORT_WEB_MARKDOWN_REPORTS_DIR to store them outside the default folder.
+    markdown_reports_dir: Path = Path(
+        os.environ.get("ORT_WEB_MARKDOWN_REPORTS_DIR", str(DEFAULT_MARKDOWN_REPORTS_DIR))
+    )
     jobs_db_file: str = "jobs.sqlite3"
     max_parallel_jobs: int = 2
 
@@ -62,6 +73,7 @@ def ensure_runtime_dirs(settings: Settings) -> None:
     settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     settings.bin_dir.mkdir(parents=True, exist_ok=True)
+    settings.markdown_reports_dir.mkdir(parents=True, exist_ok=True)
     settings.ort_config_dir.mkdir(parents=True, exist_ok=True)
 
 

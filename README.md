@@ -1,4 +1,4 @@
-# ORT Web
+# OSS Guard
 
 Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolkit/ort) — run ORT analyzer, stream logs in real-time, and browse results from your browser.
 
@@ -19,6 +19,7 @@ Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolk
 - **Real-time log streaming** — watch ORT output live via SSE
 - **Job queue** — async job execution with parallel workers
 - **HTML report generation** — auto-generates reports after analysis
+- **Markdown report generation** — auto-generates `ort-report.md` with metadata, tags, vulnerabilities, and component inventory
 - **Job history** — filter by status, language, time range with pagination
 - **Bilingual UI** — Vietnamese and English
 - **Modern SaaS UI** — glassmorphism design with sidebar navigation
@@ -29,7 +30,7 @@ Local web GUI for [OSS Review Toolkit (ORT)](https://github.com/oss-review-toolk
 |-------------|---------|-------|
 | Python | 3.9+ | |
 | Java | 21+ | Required by ORT |
-| Git | any | For `ort-web update` |
+| Git | any | For `oss-guard update` |
 
 For Python project analysis, also install:
 
@@ -51,14 +52,14 @@ source .venv/bin/activate
 pip3 install -e .
 ```
 
-Create a global symlink so `ort-web` works from anywhere:
+Create a global symlink so `oss-guard` works from anywhere:
 
 ```bash
 # Apple Silicon (M1/M2/M3)
-ln -sf "$PWD/.venv/bin/ort-web" /opt/homebrew/bin/ort-web
+ln -sf "$PWD/.venv/bin/oss-guard" /opt/homebrew/bin/oss-guard
 
 # Intel Mac
-ln -sf "$PWD/.venv/bin/ort-web" /usr/local/bin/ort-web
+ln -sf "$PWD/.venv/bin/oss-guard" /usr/local/bin/oss-guard
 ```
 
 ### Linux
@@ -74,7 +75,7 @@ pip3 install -e .
 Create a global symlink:
 
 ```bash
-ln -sf "$PWD/.venv/bin/ort-web" ~/.local/bin/ort-web
+ln -sf "$PWD/.venv/bin/oss-guard" ~/.local/bin/oss-guard
 ```
 
 Make sure `~/.local/bin` is in your PATH (add to `~/.bashrc` or `~/.zshrc` if needed):
@@ -104,7 +105,7 @@ pip3 install -e .
 Run without activating venv using the included launcher:
 
 ```cmd
-ort-web.bat
+oss-guard.bat
 ```
 
 Or add the venv Scripts folder to your PATH permanently:
@@ -117,7 +118,7 @@ Or add the venv Scripts folder to your PATH permanently:
 Then run:
 
 ```cmd
-ort-web
+oss-guard
 ```
 
 ---
@@ -127,35 +128,37 @@ ort-web
 ### macOS / Linux
 
 ```bash
-ort-web            # Start server + open browser
-ort-web open       # Same as above
-ort-web open -p 3000       # Custom port
-ort-web open --reload      # Dev mode with auto-reload
-ort-web update             # Check for new version + pull
-ort-web update -y          # Update without confirmation
-ort-web update --branch intergrate-ai  # Update from a specific branch
-ort-web version            # Show current version
-ort-web -V                 # Short version flag
+oss-guard                         # Start server + open browser
+oss-guard open                    # Same as above
+oss-guard open -p 3000            # Custom port
+oss-guard open --reload           # Dev mode with auto-reload
+oss-guard update                  # Check for new version + pull
+oss-guard update -y               # Update without confirmation
+oss-guard update --branch main    # Update from a specific branch
+oss-guard version                 # Show current version
+oss-guard -V                      # Short version flag
+oss-guard generate-md             # Refresh Markdown report for the latest run
+oss-guard generate-md --all       # Refresh Markdown reports for all runs
 ```
 
 ### Windows
 
 ```cmd
-ort-web.bat                    # Start server + open browser
-ort-web.bat open               # Same as above
-ort-web.bat open -p 3000       # Custom port
-ort-web.bat open --reload      # Dev mode with auto-reload
-ort-web.bat update             # Check for new version + pull
-ort-web.bat update -y          # Update without confirmation
-ort-web.bat version            # Show current version
+oss-guard.bat                    # Start server + open browser
+oss-guard.bat open               # Same as above
+oss-guard.bat open -p 3000       # Custom port
+oss-guard.bat open --reload      # Dev mode with auto-reload
+oss-guard.bat update             # Check for new version + pull
+oss-guard.bat update -y          # Update without confirmation
+oss-guard.bat version            # Show current version
 ```
 
-If `ort-web` is on your PATH (see Installation above):
+If `oss-guard` is on your PATH (see Installation above):
 
 ```cmd
-ort-web open
-ort-web update
-ort-web version
+oss-guard open
+oss-guard update
+oss-guard version
 ```
 
 ---
@@ -165,7 +168,7 @@ ort-web version
 When a new version is tagged on GitHub:
 
 ```bash
-ort-web update
+oss-guard update
 ```
 
 This will:
@@ -211,6 +214,42 @@ Navigate to **"Job History"** in the sidebar to browse all past jobs with:
 
 Click **"View results"** on any job to see logs and generated files.
 
+### Generated Markdown Reports
+
+OSS Guard automatically generates a Markdown report after successful ORT report generation. The file is named `ort-report.md` and includes:
+- Title, source, author, published, created, description, and tags
+- Text sections for tags and summary
+- Vulnerability table from ORT advisor results
+- Component inventory from analyzer results
+
+By default, Markdown reports are written to:
+
+```text
+runtime/markdown-reports/<job_id>/ort-report.md
+```
+
+The default folder is configured in source at `app/config.py`:
+
+```python
+# Example absolute path: DEFAULT_MARKDOWN_REPORTS_DIR = Path("/Users/your-user/ort-markdown-reports")
+DEFAULT_MARKDOWN_REPORTS_DIR = Path("runtime") / "markdown-reports"
+```
+
+You can also override it at runtime:
+
+```bash
+ORT_WEB_MARKDOWN_REPORTS_DIR=/Users/your-user/ort-markdown-reports oss-guard open
+```
+
+Manual refresh commands are available when you need to regenerate reports from existing artifacts:
+
+```bash
+oss-guard generate-md
+oss-guard generate-md --job-id <job_id>
+oss-guard generate-md --all
+oss-guard generate-md --output-dir /Users/your-user/ort-markdown-reports
+```
+
 ---
 
 ## Platform Support
@@ -220,7 +259,7 @@ Click **"View results"** on any job to see logs and generated files.
 | Web server | ✅ | ✅ | ✅ |
 | Install ORT | ✅ | ✅ | ✅ |
 | Folder picker | ✅ native | ✅ PowerShell | ✅ zenity/kdialog |
-| CLI launcher | `ort-web` / `.sh` | `ort-web.bat` | `ort-web` / `.sh` |
+| CLI launcher | `oss-guard` / `.sh` | `oss-guard.bat` | `oss-guard` / `.sh` |
 
 ---
 
@@ -254,7 +293,7 @@ Click **"View results"** on any job to see logs and generated files.
 ```
 ort-web/
   app/
-    cli.py             # CLI entry point (ort-web command)
+    cli.py             # CLI entry point (oss-guard command)
     _version.py        # Version string
     main.py            # FastAPI app
     config.py          # Settings
@@ -265,8 +304,10 @@ ort-web/
     templates/         # Jinja2 HTML
     static/            # CSS, JS
   runtime/             # Logs, artifacts, SQLite (gitignored)
-  ort-web.sh           # Unix launcher (no venv activation needed)
-  ort-web.bat          # Windows launcher (no venv activation needed)
+  oss-guard.sh         # Unix launcher (no venv activation needed)
+  oss-guard.bat        # Windows launcher (no venv activation needed)
+  ort-web.sh           # Legacy Unix launcher
+  ort-web.bat          # Legacy Windows launcher
   ARCHITECTURE.md      # Detailed app flow documentation
   pyproject.toml       # Package config + CLI entry point
 ```

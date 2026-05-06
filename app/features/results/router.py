@@ -15,6 +15,7 @@ from app.features.shared.language_detector import get_language_options
 # Files to hide from the results listing.
 _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
 _HIDDEN_SUFFIXES = {".xml", ".yml", ".yaml"}
+_MARKDOWN_REPORTS_PREFIX = "__markdown_reports__"
 
 router = APIRouter(prefix="/results", tags=["results"])
 templates = Jinja2Templates(directory="app/templates")
@@ -22,6 +23,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 def _artifact_base_dir() -> Path:
     return settings.artifacts_dir.resolve()
+
+
+def _markdown_reports_base_dir() -> Path:
+    return settings.markdown_reports_dir.resolve()
 
 
 def _find_latest_run_dir(base: Path) -> str | None:
@@ -70,12 +75,43 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
                 "is_text": suffix in {".json", ".yml", ".yaml", ".txt", ".log", ".xml", ".csv", ".md"},
             }
         )
+
+    markdown_base = _markdown_reports_base_dir()
+    if markdown_base != base:
+        markdown_root = markdown_base / run_dir if run_dir else markdown_base
+        if markdown_root.exists() and markdown_root.is_dir():
+            markdown_files = sorted(
+                [p for p in markdown_root.rglob("*.md") if p.is_file()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for item in markdown_files[: max(0, limit - len(result))]:
+                rel_path = item.relative_to(markdown_base).as_posix()
+                result.append(
+                    {
+                        "path": f"{_MARKDOWN_REPORTS_PREFIX}/{rel_path}",
+                        "filename": item.name,
+                        "size": item.stat().st_size,
+                        "is_html": False,
+                        "is_text": True,
+                    }
+                )
     return result
 
 
 def _resolve_artifact_path(path_value: str) -> Path:
     base = _artifact_base_dir()
     normalized = path_value.strip().replace('\\', '/')
+    if normalized.startswith(f"{_MARKDOWN_REPORTS_PREFIX}/"):
+        markdown_base = _markdown_reports_base_dir()
+        markdown_rel = normalized[len(_MARKDOWN_REPORTS_PREFIX) + 1:]
+        candidate = (markdown_base / markdown_rel).resolve()
+        if markdown_base != candidate and markdown_base not in candidate.parents:
+            raise HTTPException(status_code=400, detail="Invalid Markdown report path")
+        if not candidate.exists() or not candidate.is_file():
+            raise HTTPException(status_code=404, detail="Markdown report file not found")
+        return candidate
+
     if normalized.startswith("runtime/artifacts/"):
         normalized = normalized[len("runtime/artifacts/"):]
     elif normalized == "runtime/artifacts":

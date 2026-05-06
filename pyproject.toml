@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-ort-web = "app.cli:main"
+oss-guard = "app.cli:main"
 
 [tool.uvicorn]
 factory = false

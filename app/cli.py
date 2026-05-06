@@ -1,4 +1,4 @@
-"""ORT Web CLI — open, update, version."""
+"""OSS Guard CLI — open, update, version."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,8 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 from app._version import __version__
+from app.config import settings
+from app.features.analysis.markdown_report import generate_markdown_report
 
 REPO_URL = "https://github.com/tnvinh2711/ort-web"
 API_TAGS_URL = "https://api.github.com/repos/tnvinh2711/ort-web/tags"
@@ -37,7 +39,7 @@ def cmd_open(args: argparse.Namespace) -> None:
     host = "127.0.0.1"
     url = f"http://{host}:{port}"
 
-    print(f"ORT Web v{__version__}")
+    print(f"OSS Guard v{__version__}")
     print(f"Starting server at {url}")
 
     # Open browser after a short delay
@@ -68,7 +70,7 @@ def _fetch_latest_tag() -> str | None:
     import ssl
     try:
         ctx = ssl.create_default_context()
-        req = Request(API_TAGS_URL, headers={"User-Agent": "ort-web-cli"})
+        req = Request(API_TAGS_URL, headers={"User-Agent": "oss-guard-cli"})
         with urlopen(req, timeout=10, context=ctx) as resp:
             tags = json.loads(resp.read().decode())
         if tags:
@@ -140,7 +142,7 @@ def cmd_update(args: argparse.Namespace) -> None:
                 cwd=str(PROJECT_ROOT),
             )
             print(f"Done! Updated from branch '{branch}'.")
-            print("Run `ort-web open` to start.")
+            print("Run `oss-guard open` to start.")
             return
         except subprocess.CalledProcessError as exc:
             print(f"Update from branch failed: {exc}")
@@ -184,7 +186,7 @@ def cmd_update(args: argparse.Namespace) -> None:
             [sys.executable, "-m", "pip", "install", "-e", "."],
             check=True, cwd=str(PROJECT_ROOT),
         )
-        print("Done! Run `ort-web open` to start.")
+        print("Done! Run `oss-guard open` to start.")
     except subprocess.CalledProcessError as exc:
         print(f"Update failed: {exc}")
         sys.exit(1)
@@ -192,19 +194,58 @@ def cmd_update(args: argparse.Namespace) -> None:
 
 def cmd_version(args: argparse.Namespace) -> None:
     """Print version info."""
-    print(f"ort-web v{__version__}")
+    print(f"oss-guard v{__version__}")
     git_tag = _current_git_tag()
     if git_tag:
         print(f"git tag: {git_tag}")
 
 
+def _latest_artifact_run() -> Path | None:
+    base = settings.artifacts_dir
+    if not base.exists():
+        return None
+    candidates = [path for path in base.iterdir() if path.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def cmd_generate_md(args: argparse.Namespace) -> None:
+    """Regenerate Markdown report files from existing ORT artifacts."""
+    output_dir = Path(args.output_dir) if args.output_dir else None
+
+    if args.all:
+        run_dirs = [path for path in settings.artifacts_dir.iterdir() if path.is_dir()]
+    elif args.job_id:
+        run_dirs = [settings.artifacts_dir / args.job_id]
+    else:
+        latest = _latest_artifact_run()
+        run_dirs = [latest] if latest else []
+
+    if not run_dirs:
+        print("No artifact run folders found.")
+        sys.exit(1)
+
+    generated = 0
+    for run_dir in sorted(run_dirs):
+        path = generate_markdown_report(run_dir, output_dir)
+        if path:
+            generated += 1
+            print(f"Generated {path}")
+        else:
+            print(f"Skipped {run_dir}: no ORT result data found.")
+
+    if generated == 0:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="ort-web",
-        description="ORT Web — Local GUI for OSS Review Toolkit",
+        prog="oss-guard",
+        description="OSS Guard — Local GUI for OSS Review Toolkit",
     )
     parser.add_argument(
-        "-V", "--version", action="version", version=f"ort-web v{__version__}"
+        "-V", "--version", action="version", version=f"oss-guard v{__version__}"
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -223,6 +264,22 @@ def main() -> None:
     # version
     p_ver = sub.add_parser("version", help="Show version info")
     p_ver.set_defaults(func=cmd_version)
+
+    # generate-md
+    p_md = sub.add_parser(
+        "generate-md",
+        aliases=["generate-lint"],
+        help="Refresh generated Markdown report files from ORT artifacts",
+    )
+    p_md.add_argument("--job-id", type=str, default="", help="Generate for one job id")
+    p_md.add_argument("--all", action="store_true", help="Generate for all artifact run folders")
+    p_md.add_argument(
+        "--output-dir",
+        type=str,
+        default="",
+        help="Markdown output folder (default: ORT_WEB_MARKDOWN_REPORTS_DIR or runtime/markdown-reports)",
+    )
+    p_md.set_defaults(func=cmd_generate_md)
 
     args = parser.parse_args()
     if not args.command:
