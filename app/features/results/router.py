@@ -6,11 +6,11 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
 from app.features.shared.language_detector import get_language_options
+from app.shared_templates import templates
 
 # Files to hide from the results listing.
 _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
@@ -18,7 +18,6 @@ _HIDDEN_SUFFIXES = {".xml", ".yml", ".yaml"}
 _MARKDOWN_REPORTS_PREFIX = "__markdown_reports__"
 
 router = APIRouter(prefix="/results", tags=["results"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 def _artifact_base_dir() -> Path:

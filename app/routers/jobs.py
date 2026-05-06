@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
@@ -21,9 +20,9 @@ from app.services.job_store import job_store
 from app.services.log_stream import log_stream_hub
 from app.services.vuln_summary import parse_vuln_summary
 from app.routers.results import _collect_artifact_files
+from app.shared_templates import templates
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
-templates = Jinja2Templates(directory="app/templates")
 
 def _lang(request: Request) -> str:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language

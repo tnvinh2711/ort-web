@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.i18n import translate
@@ -21,9 +20,9 @@ from app.features.shared.language_detector import detect_language, get_language_
 from app.features.ort.config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
 from app.features.ort.properties import auto_generate_ort_properties, get_managers_for_language
 from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.shared_templates import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 # Cache ORT detection result — running `ort --version` starts the JVM (2-5 s).
 # Recheck at most every 2 minutes; invalidated explicitly after install.

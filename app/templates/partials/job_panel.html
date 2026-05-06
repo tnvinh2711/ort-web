@@ -3,7 +3,7 @@
     <strong>{{ job.name }}</strong>
     <span id="job-status-badge-{{ job.job_id }}" class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ job.status.value }}</span>
   </header>
-  <p class="mono" style="word-break:break-all; color:var(--secondary); margin:4px 0;">{{ job.command }}</p>
+  <p class="mono" style="word-break:break-all; color:var(--secondary); margin:4px 0;">{{ display_ort_command(job.command) }}</p>
   <p class="mono" style="color:var(--muted); margin:0 0 8px; font-size:12px;">{{ job.created_at }}</p>
   {% if job.error_message %}
   <div class="alert-warning" style="margin:0 0 8px;">{{ job.error_message }}</div>

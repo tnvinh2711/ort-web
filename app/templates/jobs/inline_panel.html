@@ -30,7 +30,7 @@
 
   <details style="margin-top:12px;">
     <summary style="cursor:pointer; font-size:12px; color:var(--muted); font-weight:500;">{{ t('dashboard.jobs_col_command') }}</summary>
-    <div class="mono" style="margin-top:4px; font-size:12px; color:var(--secondary); word-break:break-all;">{{ job.command }}</div>
+    <div class="mono" style="margin-top:4px; font-size:12px; color:var(--secondary); word-break:break-all;">{{ display_ort_command(job.command) }}</div>
   </details>
 
   {% if job.error_message %}

@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.features.catalog.registry import CORE_TOOLS
 from app.i18n import translate
+from app.shared_templates import templates
 
 router = APIRouter(prefix="/tools", tags=["tools"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/", response_class=HTMLResponse)
