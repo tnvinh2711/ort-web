@@ -7,6 +7,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script>
+    window.__initErrors = [];
+    window.onerror = function(msg, src, line, col, err) {
+      window.__initErrors.push({ msg: msg, src: src, line: line });
+    };
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <link rel="stylesheet" href="/static/css/app.css" />
   <script src="/static/js/app.js"></script>
@@ -171,8 +177,17 @@
     var pane = document.getElementById('tab-' + name);
     var ssr = document.getElementById('ssr-content');
 
-    pane.innerHTML = ssr.innerHTML;
-    ssr.remove();
+    if (ssr) {
+      pane.innerHTML = ssr.innerHTML;
+      ssr.remove();
+    } else {
+      // ssr-content missing = server returned an error page without the expected layout
+      pane.innerHTML = '<div style="padding:24px;color:#e74c3c;font-family:monospace">'
+        + '<b>&#9888; Could not load content.</b><br>'
+        + 'The server may have returned an error. '
+        + 'Check the <a href="/api/debug-info" target="_blank">debug info</a> or open DevTools (F12) &rarr; Network tab.'
+        + '</div>';
+    }
     try { if (window.htmx) htmx.process(pane); } catch (_) {}
     try { _runScripts(pane); } catch (_) {}
 
@@ -201,6 +216,46 @@
       document.getElementById('tab-' + tab).style.display = '';
     } else {
       switchTab(tab);
+    }
+  });
+
+  // Debug: detect blank dashboard (visible pane with no content, or all panes hidden)
+  window.addEventListener('load', function() {
+    var activePaneEmpty = false;
+    ['dashboard','history','setup'].forEach(function(t) {
+      var el = document.getElementById('tab-' + t);
+      if (el && el.style.display !== 'none' && el.innerHTML.trim() === '') {
+        activePaneEmpty = true;
+      }
+    });
+    var anyVisible = ['dashboard','history','setup'].some(function(t) {
+      var el = document.getElementById('tab-' + t);
+      return el && el.style.display !== 'none';
+    });
+    if (!anyVisible || activePaneEmpty) {
+      var info = [
+        '<b style="color:red">&#9888; Dashboard blank — diagnostic:</b><br><br>',
+        'Active pane empty: <b>' + activePaneEmpty + '</b><br>',
+        'Any pane visible: <b>' + anyVisible + '</b><br>',
+        'htmx loaded: <b>' + (typeof window.htmx !== 'undefined') + '</b><br>',
+        'ORTRealtime loaded: <b>' + (typeof window.ORTRealtime !== 'undefined') + '</b><br>',
+        'ssr-content found at init: <b>' + (document.getElementById("ssr-content") === null ? "no (already removed)" : "yes") + '</b><br>',
+        'User-Agent: ' + navigator.userAgent + '<br><br>',
+      ];
+      if (window.__initErrors && window.__initErrors.length) {
+        info.push('<b>JS Errors captured:</b><br>');
+        window.__initErrors.forEach(function(e) {
+          info.push('&#8226; ' + e.msg + '<br>&nbsp;&nbsp;(' + e.src + ':' + e.line + ')<br>');
+        });
+      } else {
+        info.push('<b>No JS errors captured.</b> Check server:<br>');
+        info.push('&rarr; <a href="/api/debug-info" target="_blank">/api/debug-info</a><br>');
+      }
+      info.push('<br><button onclick="location.reload()">Reload page</button>');
+      var dbg = document.createElement('div');
+      dbg.style.cssText = 'position:fixed;top:60px;right:16px;max-width:480px;background:#fff;border:2px solid #e74c3c;border-radius:8px;z-index:9999;padding:16px;font-family:monospace;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.2);overflow:auto;max-height:80vh;';
+      dbg.innerHTML = info.join('');
+      document.body.appendChild(dbg);
     }
   });
 </script>

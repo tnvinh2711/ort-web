@@ -116,6 +116,51 @@ def api_ort_status() -> JSONResponse:
     return JSONResponse({"installed": path is not None, "path": path})
 
 
+@router.get("/api/debug-info")
+def api_debug_info() -> JSONResponse:
+    """Server-side diagnostic info for debugging blank dashboard issues."""
+    import platform
+    import sys
+    errors: list[str] = []
+
+    db_ok = False
+    job_count = 0
+    try:
+        jobs = job_store.list_jobs(limit=1)
+        job_count = len(jobs)
+        db_ok = True
+    except Exception as exc:
+        errors.append(f"DB error: {exc}")
+
+    template_ok = False
+    try:
+        from app.shared_templates import templates as _t
+        _t.get_template("dashboard/index.html")
+        template_ok = True
+    except Exception as exc:
+        errors.append(f"Template error: {exc}")
+
+    config_ok = False
+    try:
+        from app.features.ort.config import get_config_yml_path, read_config_yml
+        get_config_yml_path()
+        read_config_yml()
+        config_ok = True
+    except Exception as exc:
+        errors.append(f"Config error: {exc}")
+
+    return JSONResponse({
+        "platform": platform.system(),
+        "python": sys.version,
+        "db_ok": db_ok,
+        "job_count": job_count,
+        "template_ok": template_ok,
+        "config_ok": config_ok,
+        "ort_path": _detect_ort_on_disk(),
+        "errors": errors,
+    })
+
+
 def _lang(request: Request) -> str:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
     return lang if lang in {"vi", "en"} else settings.default_language
