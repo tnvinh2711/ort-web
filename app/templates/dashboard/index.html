@@ -149,7 +149,7 @@
       if (!resp.ok) { localStorage.removeItem('ort_active_job'); return; }
       var html = await resp.text();
       container.innerHTML = html;
-      htmx.process(container);
+      try { if (window.htmx) htmx.process(container); } catch (_) {}
       container.querySelectorAll('script').forEach(function(s) {
         var n = document.createElement('script');
         n.textContent = s.textContent;

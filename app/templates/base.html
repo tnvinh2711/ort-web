@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <link rel="stylesheet" href="/static/css/app.css" />
-  <script defer src="/static/js/app.js"></script>
+  <script src="/static/js/app.js"></script>
 </head>
 <body>
   <!-- Sidebar -->
@@ -145,8 +145,11 @@
       .then(function(r) { return r.text(); })
       .then(function(html) {
         pane.innerHTML = html;
-        htmx.process(pane);
-        _runScripts(pane);
+        try { if (window.htmx) htmx.process(pane); } catch (_) {}
+        try { _runScripts(pane); } catch (_) {}
+      })
+      .catch(function() {
+        pane.innerHTML = '<div style="padding:24px;color:var(--danger);">Failed to load content. Please refresh.</div>';
       });
   }
 
@@ -170,8 +173,8 @@
 
     pane.innerHTML = ssr.innerHTML;
     ssr.remove();
-    htmx.process(pane);
-    _runScripts(pane);
+    try { if (window.htmx) htmx.process(pane); } catch (_) {}
+    try { _runScripts(pane); } catch (_) {}
 
     _tabReady[name] = true;
     _currentTab = name;
