@@ -220,6 +220,13 @@ class JobStore:
 
         return [Job.from_row(dict(r)) for r in rows], total
 
+    def delete_job(self, job_id: str) -> bool:
+        """Hard-delete a job row. Returns True if a row was removed."""
+        with self._connect() as con:
+            cursor = con.execute("delete from jobs where job_id = ?", (job_id,))
+            con.commit()
+            return cursor.rowcount > 0
+
     def mark_running_jobs_as_failed(self) -> None:
         with self._connect() as con:
             con.execute(

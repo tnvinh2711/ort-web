@@ -2,7 +2,16 @@
 <section class="panel" id="active-job-panel" style="border-left:4px solid {% if job.status.value == 'success' %}var(--success){% elif job.status.value == 'failed' %}var(--danger){% elif job.status.value == 'running' %}var(--primary-light){% else %}var(--warning){% endif %};">
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
     <h2 style="margin:0;">{{ job.name }}</h2>
-    <span id="job-status-badge" class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ status_map[job.status.value] }}</span>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span id="job-status-badge" class="status-pill status-pill-{{ job.status.value }}"><span class="status-dot"></span>{{ status_map[job.status.value] }}</span>
+      <button
+        id="job-cancel-btn"
+        type="button"
+        class="btn-secondary btn-sm"
+        onclick="cancelActiveJob('{{ job.job_id }}')"
+        style="{% if job.status.value not in ('pending', 'running') %}display:none;{% endif %}"
+      >{{ t('job.cancel_btn') }}</button>
+    </div>
   </div>
 
   <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin-top:12px; font-size:13px;">
@@ -145,6 +154,8 @@
           if (progress) progress.style.display = 'none';
           var logDetails = document.getElementById('job-log-details');
           if (logDetails) logDetails.removeAttribute('open');
+          var cancelBtn = document.getElementById('job-cancel-btn');
+          if (cancelBtn) cancelBtn.style.display = 'none';
           var panel = document.getElementById('active-job-panel');
           if (panel) {
             var color = status === 'success' ? 'var(--success)' : 'var(--danger)';

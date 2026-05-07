@@ -55,11 +55,17 @@ def parse_vuln_summary(job_id: str) -> dict | None:
     return {**counts, "total": total} if total > 0 else None
 
 
-def get_vuln_summary(job_id: str, vuln_summary_json: str | None) -> dict | None:
-    """Return vuln summary from DB-cached JSON (fast) or parse YAML as fallback."""
-    if vuln_summary_json is not None:
-        try:
-            return json.loads(vuln_summary_json)
-        except Exception:
-            pass
-    return parse_vuln_summary(job_id)
+def get_vuln_summary(vuln_summary_json: str | None) -> dict | None:
+    """Return vuln summary from the DB-cached JSON column.
+
+    Returns None when the column is NULL (job predates caching, or pipeline did
+    not finish). Callers must not parse YAML on the request path — the
+    post-analyze pipeline writes this column, and ``scripts/backfill_vuln_summary.py``
+    backfills older rows.
+    """
+    if vuln_summary_json is None:
+        return None
+    try:
+        return json.loads(vuln_summary_json)
+    except Exception:
+        return None

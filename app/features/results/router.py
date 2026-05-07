@@ -102,9 +102,12 @@ def _walk_files(root: Path, *, suffix_filter: set[str] | None = None):
             continue
 
 
-# Phase 4c: cache artifact scans by (search_root, parent_mtime) with short TTL.
-# Invalidates automatically when the run directory's mtime changes (new file written).
-_artifact_cache: dict[tuple[str, str | None, int], tuple[float, float, list]] = {}
+# Cache artifact scans by (search_root, parent_mtime) with short TTL.
+# Only caches the global scan (run_dir=None) for the /results/ index page —
+# parent_mtime invalidation does not detect changes inside subdirectories,
+# which caused job panels to show a stale empty file list when ORT wrote
+# late files into a subdir on slow disks.
+_artifact_cache: dict[tuple[str, int], tuple[float, float, list]] = {}
 _ARTIFACT_CACHE_TTL = 30.0  # seconds
 
 
@@ -117,18 +120,21 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
     if not search_root.exists() or not search_root.is_dir():
         return []
 
-    # Cache lookup: keyed by (root, run_dir, limit) + validated against parent mtime + TTL.
-    try:
-        parent_mtime = search_root.stat().st_mtime
-    except OSError:
-        parent_mtime = 0.0
-    cache_key = (str(base), run_dir, limit)
+    cache_eligible = run_dir is None
+    parent_mtime = 0.0
+    cache_key: tuple[str, int] | None = None
     now = time.monotonic()
-    cached = _artifact_cache.get(cache_key)
-    if cached is not None:
-        cached_mtime, cached_at, cached_result = cached
-        if cached_mtime == parent_mtime and (now - cached_at) < _ARTIFACT_CACHE_TTL:
-            return cached_result
+    if cache_eligible:
+        try:
+            parent_mtime = search_root.stat().st_mtime
+        except OSError:
+            parent_mtime = 0.0
+        cache_key = (str(base), limit)
+        cached = _artifact_cache.get(cache_key)
+        if cached is not None:
+            cached_mtime, cached_at, cached_result = cached
+            if cached_mtime == parent_mtime and (now - cached_at) < _ARTIFACT_CACHE_TTL:
+                return cached_result
 
     # heap of (mtime, sequence, Path, size, suffix) — keep top-`limit` by mtime desc.
     # Use heapq.nsmallest on negative mtime so the smallest-negative wins (i.e. largest mtime).
@@ -181,7 +187,8 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
                     }
                 )
 
-    _artifact_cache[cache_key] = (parent_mtime, now, result)
+    if cache_eligible and cache_key is not None:
+        _artifact_cache[cache_key] = (parent_mtime, now, result)
     return result
 
 

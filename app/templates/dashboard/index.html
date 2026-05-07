@@ -172,6 +172,36 @@
     }
   })();
 
+  // Cancel a running/pending job from the inline panel.
+  // Defined on the dashboard scope so it survives panel reloads.
+  window.cancelActiveJob = async function(jobId) {
+    if (!jobId) return;
+    if (!window.confirm('{{ t("job.cancel_confirm") }}')) return;
+
+    var btn = document.getElementById('job-cancel-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '{{ t("job.cancel_in_progress") }}'; }
+
+    try {
+      var resp = await fetch('/jobs/' + jobId + '/cancel', { method: 'POST' });
+      var data = await resp.json().catch(function() { return {}; });
+      if (!resp.ok || data.cancelled === false) {
+        alert(data.reason || data.detail || '{{ t("job.cancel_failed") }}');
+        if (btn) { btn.disabled = false; btn.textContent = '{{ t("job.cancel_btn") }}'; }
+        return;
+      }
+
+      if (window.ORTRealtime) window.ORTRealtime.teardownAll();
+      localStorage.removeItem('ort_active_job');
+
+      var container = document.getElementById('job-panel-container');
+      if (container) container.innerHTML = '';
+    } catch (err) {
+      console.error(err);
+      alert('{{ t("job.cancel_failed") }}');
+      if (btn) { btn.disabled = false; btn.textContent = '{{ t("job.cancel_btn") }}'; }
+    }
+  };
+
   async function pickDirectoryInto(targetInputId) {
     try {
       var response = await fetch('/api/pick-directory');

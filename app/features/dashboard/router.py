@@ -19,7 +19,7 @@ from app.features.jobs.store import job_store
 from app.features.shared.language_detector import detect_language, get_language_options
 from app.features.ort.config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
 from app.features.ort.properties import auto_generate_ort_properties, get_managers_for_language
-from app.features.analysis.vuln_summary import get_vuln_summary, parse_vuln_summary
+from app.features.analysis.vuln_summary import get_vuln_summary
 from app.shared_templates import templates
 
 router = APIRouter()
@@ -181,7 +181,7 @@ def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
     jobs, total = job_store.list_jobs_paged(page=page, per_page=per_page)
     total_pages = max(1, (total + per_page - 1) // per_page)
     vuln_summaries = {
-        job.job_id: get_vuln_summary(job.job_id, job.vuln_summary_json)
+        job.job_id: get_vuln_summary(job.vuln_summary_json)
         for job in jobs
         if job.status.value == "success"
     }
@@ -364,7 +364,7 @@ def jobs_partial(request: Request) -> HTMLResponse:
     total_pages = max(1, (total + per_page - 1) // per_page)
 
     vuln_summaries = {
-        job.job_id: get_vuln_summary(job.job_id, job.vuln_summary_json)
+        job.job_id: get_vuln_summary(job.vuln_summary_json)
         for job in jobs
         if job.status.value == "success"
     }

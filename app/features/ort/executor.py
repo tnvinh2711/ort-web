@@ -63,7 +63,21 @@ def _ensure_force_overwrite(tokens: list[str]) -> list[str]:
     return [tokens[0], "-P", "ort.forceOverwrite=true", *tokens[1:]]
 
 
-async def run_ort_command(job_id: str, command: str, work_dir: str, log_file: Path) -> int:
+async def run_ort_command(
+    job_id: str,
+    command: str,
+    work_dir: str,
+    log_file: Path,
+    *,
+    on_process_start=None,
+) -> int:
+    """Run an ORT subprocess.
+
+    ``on_process_start`` is invoked once with the live ``asyncio.subprocess.Process``
+    so the caller (the job queue) can register it for cancellation. The callback
+    runs in this coroutine's task; exceptions inside it are swallowed so they
+    don't kill the run.
+    """
     tokens = _validate_command(command)
     tokens = _ensure_force_overwrite(tokens)
 
@@ -95,13 +109,24 @@ async def run_ort_command(job_id: str, command: str, work_dir: str, log_file: Pa
         # Batch scripts require cmd.exe invocation for consistent execution.
         spawn_tokens = ["cmd", "/c", *tokens]
 
-    process = await asyncio.create_subprocess_exec(
-        *spawn_tokens,
-        cwd=work_dir,
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
+    spawn_kwargs: dict = {
+        "cwd": work_dir,
+        "env": env,
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.STDOUT,
+    }
+    # On POSIX, start a new session so we can kill the whole process group
+    # (ORT spawns a Java child — terminating just the launcher leaves it running).
+    if os.name != "nt":
+        spawn_kwargs["start_new_session"] = True
+
+    process = await asyncio.create_subprocess_exec(*spawn_tokens, **spawn_kwargs)
+
+    if on_process_start is not None:
+        try:
+            on_process_start(process)
+        except Exception:
+            pass
 
     with log_file.open("a", encoding="utf-8") as out:
         assert process.stdout is not None

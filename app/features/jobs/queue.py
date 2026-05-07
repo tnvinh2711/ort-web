@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import shlex
 import shutil
+import signal
+import subprocess
 from pathlib import Path
 
 from app.config import settings
@@ -18,6 +21,50 @@ from app.features.analysis.component_inventory_csv import generate_component_inv
 from app.features.analysis.markdown_report import generate_markdown_report
 from app.features.analysis.vuln_summary import parse_vuln_summary
 from app.features.setup.vertex_config_store import get_vertex_config
+
+
+def _kill_process_tree(process: asyncio.subprocess.Process) -> None:
+    """Best-effort kill of an ORT subprocess and any children it spawned.
+
+    On Windows, ``taskkill /F /T`` walks the win32 job tree (cmd.exe -> ort.bat -> java).
+    On POSIX, the process is its own session leader (see executor.py), so we
+    signal the whole process group.
+    """
+    if process.returncode is not None:
+        return
+    pid = process.pid
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                check=False,
+            )
+        else:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+
+
+def _purge_job_data(job_id: str) -> None:
+    """Delete DB row, log file, and artifact dir for a job. Best-effort."""
+    try:
+        job_store.delete_job(job_id)
+    except Exception:
+        pass
+    try:
+        (settings.logs_dir / f"{job_id}.log").unlink(missing_ok=True)
+    except Exception:
+        pass
+    artifact_dir = settings.artifacts_dir / job_id
+    if artifact_dir.exists():
+        shutil.rmtree(artifact_dir, ignore_errors=True)
 
 
 def _extract_failure_reason(log_file: Path) -> str | None:
@@ -201,6 +248,11 @@ class JobQueue:
         self._workers: list[asyncio.Task[None]] = []
         self._started = False
         self._ephemeral_jobs: dict[str, Job | None] = {}
+        # Live subprocess handles, keyed by job_id, so we can kill on cancel.
+        self._running_processes: dict[str, asyncio.subprocess.Process] = {}
+        # Job IDs the user has cancelled — suppresses post-run DB writes and
+        # post-analyze pipeline steps in the worker.
+        self._cancelled: set[str] = set()
 
     async def start(self) -> None:
         if self._started:
@@ -225,6 +277,31 @@ class JobQueue:
             job_store.create_job(job)
         self._ephemeral_jobs[job.job_id] = job if ephemeral else None
         await self._queue.put(job.job_id)
+
+    async def cancel_job(self, job_id: str) -> dict:
+        """Cancel a pending or running job and erase all of its data.
+
+        Kills the live subprocess tree (if any), marks the job as cancelled so
+        the worker skips post-run bookkeeping, then deletes the DB row, log,
+        and artifact directory. Returns ``{"cancelled": bool, "reason": str}``.
+        """
+        # Mark as cancelled BEFORE killing — the worker checks this set in its
+        # finally block and skips DB writes / AI report scheduling accordingly.
+        self._cancelled.add(job_id)
+
+        process = self._running_processes.get(job_id)
+        was_running = process is not None and process.returncode is None
+        if was_running:
+            _kill_process_tree(process)  # type: ignore[arg-type]
+
+        await log_stream_hub.publish(
+            job_id, make_event(EVENT_STATUS, status=JobStatus.CANCELLED.value)
+        )
+
+        await asyncio.to_thread(_purge_job_data, job_id)
+        self._ephemeral_jobs.pop(job_id, None)
+
+        return {"cancelled": True, "was_running": was_running}
 
     async def _worker_loop(self) -> None:
         while True:
@@ -316,6 +393,12 @@ class JobQueue:
         )
 
     async def _run(self, job_id: str) -> None:
+        # Job was cancelled while still pending in the queue — skip entirely.
+        if job_id in self._cancelled:
+            self._cancelled.discard(job_id)
+            self._ephemeral_jobs.pop(job_id, None)
+            return
+
         ephemeral = job_id in self._ephemeral_jobs and self._ephemeral_jobs[job_id] is not None
         if ephemeral:
             job = self._ephemeral_jobs.pop(job_id)
@@ -334,6 +417,8 @@ class JobQueue:
         log_file = Path(job.log_file)
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
+        register = lambda p: self._running_processes.__setitem__(job_id, p)  # noqa: E731
+
         try:
             if job.command == "__install_ort__" or job.command.startswith("__install_ort__::"):
                 target_dir: Path | None = None
@@ -345,8 +430,15 @@ class JobQueue:
                 if ort_path:
                     job.ort_install_path = ort_path
             else:
-                exit_code = await run_ort_command(job.job_id, job.command, job.work_dir, log_file)
+                exit_code = await run_ort_command(
+                    job.job_id, job.command, job.work_dir, log_file,
+                    on_process_start=register,
+                )
                 command_tokens = shlex.split(job.command)
+                # Skip post-run pipeline if the user cancelled mid-run — the
+                # subprocess was killed and the job's data is being purged.
+                if job_id in self._cancelled:
+                    return
                 if exit_code == 0 and "analyze" in command_tokens:
                     exit_code = await _run_post_analyze_pipeline(
                         job.job_id, job.command, job.work_dir, log_file
@@ -377,6 +469,13 @@ class JobQueue:
                 make_event(EVENT_LOG, line=f"[error] Unexpected error: {exc}\n"),
             )
         finally:
+            self._running_processes.pop(job_id, None)
+            cancelled = job_id in self._cancelled
+            self._cancelled.discard(job_id)
+            if cancelled:
+                # cancel_job() has already wiped DB row, log file, and artifacts;
+                # don't re-create the row by writing back through job_store.
+                return
             job.finished_at = Job.now_iso()
             if not ephemeral:
                 job_store.update_job(job)

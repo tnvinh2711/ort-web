@@ -100,7 +100,7 @@ async def job_inline_panel(request: Request, job_id: str):
     log_path = Path(job.log_file)
     log_text, vuln_summary, ai_report = await asyncio.gather(
         asyncio.to_thread(_read_log_tail, log_path),
-        asyncio.to_thread(get_vuln_summary, job_id, job.vuln_summary_json),
+        asyncio.to_thread(get_vuln_summary, job.vuln_summary_json),
         asyncio.to_thread(_load_ai_report, job),
     )
 
@@ -140,7 +140,7 @@ async def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
     log_path = Path(job.log_file)
     log_text, vuln_summary, ai_report = await asyncio.gather(
         asyncio.to_thread(_read_log_tail, log_path),
-        asyncio.to_thread(get_vuln_summary, job_id, job.vuln_summary_json),
+        asyncio.to_thread(get_vuln_summary, job.vuln_summary_json),
         asyncio.to_thread(_load_ai_report, job),
     )
 
@@ -333,6 +333,28 @@ async def retry_ai_report(job_id: str) -> JSONResponse:
         return JSONResponse({"success": False, "error": "Cannot start AI report retry."}, status_code=400)
 
     return JSONResponse({"success": True, "status": "pending"})
+
+
+@router.post("/{job_id}/cancel")
+async def cancel_job(job_id: str) -> JSONResponse:
+    """Cancel a running or pending job and erase all of its data.
+
+    Kills the live ORT subprocess tree (if any), then deletes the DB row,
+    log file, and artifact directory. Cancelling a finished job is a no-op
+    against the queue but still removes any leftover data on disk.
+    """
+    job = await asyncio.to_thread(job_store.get_job, job_id)
+    if not job and job_id not in job_queue._running_processes and job_id not in job_queue._ephemeral_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job and job.status.value in {"success", "failed", "cancelled"}:
+        return JSONResponse(
+            {"cancelled": False, "reason": "Job already finished."},
+            status_code=409,
+        )
+
+    result = await job_queue.cancel_job(job_id)
+    return JSONResponse(result)
 
 
 @router.post("/{job_id}/open-log", response_class=RedirectResponse)
