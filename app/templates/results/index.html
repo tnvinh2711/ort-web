@@ -53,7 +53,7 @@
     id="jobs-container"
     hx-get="/partials/jobs?lang={{ lang }}"
     hx-include="#jobs-filter-form"
-    hx-trigger="load, refresh-jobs, keyup changed delay:300ms from:#jobs-filter-q, change from:#jobs-filter-status, change from:#jobs-filter-language"
+    hx-trigger="refresh-jobs, keyup changed delay:300ms from:#jobs-filter-q, change from:#jobs-filter-status, change from:#jobs-filter-language"
     hx-swap="innerHTML"
     hx-on::after-settle="scheduleJobsPoll()"
   ></div>
@@ -91,6 +91,41 @@
       }));
     }
 
+    // Core fetch function — does NOT depend on HTMX being loaded
+    function _loadJobsList() {
+      var container = document.getElementById('jobs-container');
+      if (!container) return;
+      var params = new URLSearchParams({
+        lang: '{{ lang }}',
+        q: document.getElementById('jobs-filter-q').value || '',
+        status: document.getElementById('jobs-filter-status').value || 'all',
+        detected_language: document.getElementById('jobs-filter-language').value || '',
+        time_range: timeSelect.value || '',
+        date_from: dateFrom.value || '',
+        date_to: dateTo.value || '',
+        page: document.getElementById('jobs-filter-page').value || '1',
+      });
+      fetch('/partials/jobs?' + params.toString())
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          container.innerHTML = html;
+          try { if (window.htmx) htmx.process(container); } catch (_) {}
+          scheduleJobsPoll();
+        })
+        .catch(function() {});
+    }
+
+    function _triggerRefresh() {
+      document.getElementById('jobs-filter-page').value = '1';
+      // Use HTMX trigger if available, else fall back to direct fetch
+      var c = document.getElementById('jobs-container');
+      if (c && window.htmx) {
+        htmx.trigger(c, 'refresh-jobs');
+      } else {
+        _loadJobsList();
+      }
+    }
+
     timeSelect.addEventListener('change', function() {
       var val = timeSelect.value;
       if (val === 'custom') {
@@ -108,21 +143,12 @@
         dateFrom.value = '';
         dateTo.value = '';
       }
-      document.getElementById('jobs-filter-page').value = '1';
       saveFilters();
-      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+      _triggerRefresh();
     });
 
-    dateFrom.addEventListener('change', function() {
-      document.getElementById('jobs-filter-page').value = '1';
-      saveFilters();
-      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
-    });
-    dateTo.addEventListener('change', function() {
-      document.getElementById('jobs-filter-page').value = '1';
-      saveFilters();
-      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
-    });
+    dateFrom.addEventListener('change', function() { saveFilters(); _triggerRefresh(); });
+    dateTo.addEventListener('change', function() { saveFilters(); _triggerRefresh(); });
 
     document.querySelectorAll('#jobs-filter-q, #jobs-filter-status, #jobs-filter-language').forEach(function(el) {
       el.addEventListener('change', function() { document.getElementById('jobs-filter-page').value = '1'; saveFilters(); });
@@ -131,13 +157,9 @@
 
     function goToPage(p) {
       document.getElementById('jobs-filter-page').value = p;
-      htmx.trigger(document.getElementById('jobs-container'), 'refresh-jobs');
+      _triggerRefresh();
     }
 
-    // After each jobs list swap, schedule next poll if any job is still running.
-    // Uses a single timer reference to prevent multiple concurrent timers
-    // (important: this function is called via hx-on::after-settle on the element,
-    //  NOT via document.body listener — avoids listener accumulation on SPA nav).
     var _jobsPollTimer = null;
     function scheduleJobsPoll() {
       if (_jobsPollTimer) return;
@@ -146,11 +168,13 @@
       if (container.querySelector('[data-job-status="running"],[data-job-status="pending"]')) {
         _jobsPollTimer = setTimeout(function() {
           _jobsPollTimer = null;
-          var c = document.getElementById('jobs-container');
-          if (c) htmx.trigger(c, 'refresh-jobs');
+          _loadJobsList();
         }, 5000);
       }
     }
+
+    // Initial load: always use direct fetch — never depends on HTMX hx-trigger="load"
+    _loadJobsList();
 
   </script>
 </section>
