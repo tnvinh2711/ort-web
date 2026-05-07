@@ -170,7 +170,9 @@ async def _run_post_analyze_pipeline(
         summary = parse_vuln_summary(job_id)
         job = job_store.get_job(job_id)
         if job:
-            job.vuln_summary_json = _json.dumps(summary) if summary else None
+            # Store "null" (not Python None) so DB-cached=True even when no vulns found.
+            # None in DB means "never computed" → forces YAML re-parse on every list load.
+            job.vuln_summary_json = _json.dumps(summary)
             job_store.update_job(job)
     except Exception:
         pass
