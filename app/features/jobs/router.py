@@ -19,7 +19,7 @@ from app.features.jobs.queue import job_queue
 from app.features.jobs.event_contract import connected_payload, heartbeat_payload, to_sse_payload
 from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
-from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.analysis.vuln_summary import get_vuln_summary
 from app.features.analysis.markdown_report import generate_markdown_report
 from app.features.results.router import _collect_artifact_files
 from app.features.setup.vertex_config_store import get_vertex_config
@@ -30,6 +30,30 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def _lang(request: Request) -> str:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
     return lang if lang in {"vi", "en"} else settings.default_language
+
+
+_LOG_TAIL_BYTES = 256 * 1024  # 256 KB tail for inline display
+
+
+def _read_log_tail(log_path: Path) -> str:
+    """Read the tail of a log file. Returns full content if smaller than threshold."""
+    if not log_path.exists():
+        return ""
+    try:
+        size = log_path.stat().st_size
+        if size <= _LOG_TAIL_BYTES:
+            return log_path.read_text(encoding="utf-8", errors="replace")
+        with log_path.open("rb") as f:
+            f.seek(-_LOG_TAIL_BYTES, 2)
+            data = f.read()
+        text = data.decode("utf-8", errors="replace")
+        # Drop partial first line (likely cut mid-utf8 or mid-line)
+        nl = text.find("\n")
+        if nl >= 0:
+            text = text[nl + 1:]
+        return f"[log truncated — showing last {_LOG_TAIL_BYTES // 1024} KB of {size // 1024} KB]\n" + text
+    except Exception:
+        return ""
 
 
 def _format_datetime(value: str | None) -> str:
@@ -64,19 +88,21 @@ def _load_ai_report(job: Job) -> dict | None:
 
 
 @router.get("/{job_id}/panel", response_class=HTMLResponse)
-def job_inline_panel(request: Request, job_id: str):
+async def job_inline_panel(request: Request, job_id: str):
     """HTMX partial: inline job panel for dashboard."""
-    job = job_store.get_job(job_id)
+    job = await asyncio.to_thread(job_store.get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     lang = _lang(request)
     ai_key_configured = bool(get_vertex_config().api_key.strip())
 
-    log_text = ""
     log_path = Path(job.log_file)
-    if log_path.exists():
-        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+    log_text, vuln_summary, ai_report = await asyncio.gather(
+        asyncio.to_thread(_read_log_tail, log_path),
+        asyncio.to_thread(get_vuln_summary, job_id, job.vuln_summary_json),
+        asyncio.to_thread(_load_ai_report, job),
+    )
 
     return templates.TemplateResponse(
         request,
@@ -88,8 +114,8 @@ def job_inline_panel(request: Request, job_id: str):
             "fmt_dt": _format_datetime,
             "job": job,
             "log_text": log_text,
-            "vuln_summary": parse_vuln_summary(job_id),
-            "ai_report": _load_ai_report(job),
+            "vuln_summary": vuln_summary,
+            "ai_report": ai_report,
             "ai_key_configured": ai_key_configured,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
@@ -103,18 +129,20 @@ def job_inline_panel(request: Request, job_id: str):
 
 
 @router.get("/{job_id}", response_class=HTMLResponse)
-def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
+async def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
     """Standalone job detail page (no inline expand)."""
-    job = job_store.get_job(job_id)
+    job = await asyncio.to_thread(job_store.get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     lang = _lang(request)
     ai_key_configured = bool(get_vertex_config().api_key.strip())
-    log_text = ""
     log_path = Path(job.log_file)
-    if log_path.exists():
-        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+    log_text, vuln_summary, ai_report = await asyncio.gather(
+        asyncio.to_thread(_read_log_tail, log_path),
+        asyncio.to_thread(get_vuln_summary, job_id, job.vuln_summary_json),
+        asyncio.to_thread(_load_ai_report, job),
+    )
 
     is_htmx = request.headers.get("HX-Request")
     return templates.TemplateResponse(
@@ -127,8 +155,8 @@ def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
             "fmt_dt": _format_datetime,
             "job": job,
             "log_text": log_text,
-            "vuln_summary": parse_vuln_summary(job_id),
-            "ai_report": _load_ai_report(job),
+            "vuln_summary": vuln_summary,
+            "ai_report": ai_report,
             "ai_key_configured": ai_key_configured,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
@@ -143,26 +171,26 @@ def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
 
 
 @router.get("/{job_id}/log-text")
-def job_log_text(job_id: str):
+async def job_log_text(job_id: str):
     """Return raw log text for a job (works for ephemeral jobs too)."""
     from app.config import settings as _settings
-    # Try DB first, fall back to log file path derived from job_id
-    job = job_store.get_job(job_id)
+    job = await asyncio.to_thread(job_store.get_job, job_id)
     log_path = Path(job.log_file) if job else _settings.logs_dir / f"{job_id}.log"
     if log_path.exists():
-        return PlainTextResponse(log_path.read_text(encoding="utf-8", errors="replace"))
+        text = await asyncio.to_thread(log_path.read_text, encoding="utf-8", errors="replace")
+        return PlainTextResponse(text)
     return PlainTextResponse("")
 
 
 @router.get("/{job_id}/files", response_class=HTMLResponse)
-def job_files_partial(request: Request, job_id: str):
+async def job_files_partial(request: Request, job_id: str):
     """HTMX partial: generated files for a specific job."""
-    job = job_store.get_job(job_id)
+    job = await asyncio.to_thread(job_store.get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     lang = _lang(request)
-    artifact_files = _collect_artifact_files(run_dir=job_id)
+    artifact_files = await asyncio.to_thread(_collect_artifact_files, run_dir=job_id)
 
     return templates.TemplateResponse(
         request,
@@ -177,19 +205,19 @@ def job_files_partial(request: Request, job_id: str):
 
 
 @router.post("/{job_id}/generate-markdown-report", response_class=HTMLResponse)
-def generate_job_markdown_report(request: Request, job_id: str):
+async def generate_job_markdown_report(request: Request, job_id: str):
     """Refresh the generated Markdown report for a completed job."""
-    job = job_store.get_job(job_id)
+    job = await asyncio.to_thread(job_store.get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     output_dir = (settings.artifacts_dir / job_id).resolve()
-    report_path = generate_markdown_report(output_dir)
+    report_path = await asyncio.to_thread(generate_markdown_report, output_dir)
     if not report_path:
         raise HTTPException(status_code=404, detail="No ORT result data found for this job.")
 
     lang = _lang(request)
-    artifact_files = _collect_artifact_files(run_dir=job_id)
+    artifact_files = await asyncio.to_thread(_collect_artifact_files, run_dir=job_id)
     return templates.TemplateResponse(
         request,
         "jobs/files_partial.html",

@@ -15,6 +15,9 @@ class JobStore:
         con = sqlite3.connect(self._db_path, timeout=10)
         con.row_factory = sqlite3.Row
         con.execute("pragma journal_mode=wal")
+        con.execute("pragma synchronous=normal")
+        con.execute("pragma temp_store=memory")
+        con.execute("pragma mmap_size=67108864")
         return con
 
     def initialize(self) -> None:
@@ -72,9 +75,20 @@ class JobStore:
                     con.execute("alter table jobs add column ai_report_path text")
                 if "ai_report_summary" not in column_names:
                     con.execute("alter table jobs add column ai_report_summary text")
+                if "vuln_summary_json" not in column_names:
+                    con.execute("alter table jobs add column vuln_summary_json text")
             except Exception:
                 pass
-            
+
+            # Indexes to speed up listing/filter queries (Phase 5).
+            try:
+                con.execute("create index if not exists idx_jobs_created_at on jobs(created_at desc)")
+                con.execute("create index if not exists idx_jobs_status on jobs(status)")
+                con.execute("create index if not exists idx_jobs_detected_language on jobs(detected_language)")
+                con.execute("create index if not exists idx_jobs_created_status on jobs(created_at desc, status)")
+            except Exception:
+                pass
+
             con.commit()
 
     def create_job(self, job: Job) -> None:
@@ -86,13 +100,13 @@ class JobStore:
                     created_at, started_at, finished_at, exit_code,
                     error_message, log_file, ort_install_path, project_path,
                     detected_language, ai_report_status, ai_report_path,
-                    ai_report_summary
+                    ai_report_summary, vuln_summary_json
                 ) values (
                     :job_id, :name, :command, :work_dir, :language, :status,
                     :created_at, :started_at, :finished_at, :exit_code,
                     :error_message, :log_file, :ort_install_path, :project_path,
                     :detected_language, :ai_report_status, :ai_report_path,
-                    :ai_report_summary
+                    :ai_report_summary, :vuln_summary_json
                 )
                 """,
                 job.to_row(),
@@ -121,7 +135,8 @@ class JobStore:
                     detected_language = :detected_language,
                     ai_report_status = :ai_report_status,
                     ai_report_path = :ai_report_path,
-                    ai_report_summary = :ai_report_summary
+                    ai_report_summary = :ai_report_summary,
+                    vuln_summary_json = :vuln_summary_json
                 where job_id = :job_id
                 """,
                 job.to_row(),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -9,6 +11,7 @@ from app.config import settings
 _SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 
+@lru_cache(maxsize=2000)
 def parse_vuln_summary(job_id: str) -> dict | None:
     """Parse advisor-result.yml and return vulnerability counts by severity.
 
@@ -50,3 +53,13 @@ def parse_vuln_summary(job_id: str) -> dict | None:
 
     total = sum(counts.values())
     return {**counts, "total": total} if total > 0 else None
+
+
+def get_vuln_summary(job_id: str, vuln_summary_json: str | None) -> dict | None:
+    """Return vuln summary from DB-cached JSON (fast) or parse YAML as fallback."""
+    if vuln_summary_json is not None:
+        try:
+            return json.loads(vuln_summary_json)
+        except Exception:
+            pass
+    return parse_vuln_summary(job_id)

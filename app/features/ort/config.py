@@ -130,12 +130,28 @@ def get_config_yml_path() -> Path:
     return Path.home() / ".ort" / "config" / "config.yml"
 
 
+# Module-level cache for read_config_yml: avoid re-reading on every dashboard load.
+# Invalidated by mtime, so external edits are picked up automatically.
+_config_yml_cache: tuple[float, str] | None = None  # (mtime, content)
+
+
 def read_config_yml() -> str:
-    """Read the current config.yml content, or return empty string."""
+    """Read the current config.yml content, or return empty string. mtime-cached."""
+    global _config_yml_cache
     config_path = get_config_yml_path()
-    if config_path.exists():
-        return config_path.read_text(encoding="utf-8")
-    return ""
+    try:
+        st = config_path.stat()
+    except OSError:
+        return ""
+    mtime = st.st_mtime
+    if _config_yml_cache is not None and _config_yml_cache[0] == mtime:
+        return _config_yml_cache[1]
+    try:
+        content = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    _config_yml_cache = (mtime, content)
+    return content
 
 
 def _get_excludes_for_language(language: str) -> list[dict[str, str]]:

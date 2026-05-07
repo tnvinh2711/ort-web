@@ -35,6 +35,7 @@ class Job:
     ai_report_status: str | None = None
     ai_report_path: str | None = None
     ai_report_summary: str | None = None
+    vuln_summary_json: str | None = None
 
     @staticmethod
     def now_iso() -> str:
@@ -60,6 +61,7 @@ class Job:
             "ai_report_status": self.ai_report_status,
             "ai_report_path": self.ai_report_path,
             "ai_report_summary": self.ai_report_summary,
+            "vuln_summary_json": self.vuln_summary_json,
         }
 
     @classmethod
@@ -83,4 +85,5 @@ class Job:
             ai_report_status=row.get("ai_report_status"),
             ai_report_path=row.get("ai_report_path"),
             ai_report_summary=row.get("ai_report_summary"),
+            vuln_summary_json=row.get("vuln_summary_json"),
         )

@@ -19,15 +19,15 @@ from app.features.jobs.store import job_store
 from app.features.shared.language_detector import detect_language, get_language_options
 from app.features.ort.config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
 from app.features.ort.properties import auto_generate_ort_properties, get_managers_for_language
-from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.analysis.vuln_summary import get_vuln_summary, parse_vuln_summary
 from app.shared_templates import templates
 
 router = APIRouter()
 
 # Cache ORT detection result — running `ort --version` starts the JVM (2-5 s).
-# Recheck at most every 2 minutes; invalidated explicitly after install.
+# Recheck at most every 10 minutes; invalidated explicitly via _invalidate_ort_cache().
 _ort_cache: dict = {"path": None, "at": 0.0, "valid": False}
-_ORT_CACHE_TTL = 120.0  # seconds
+_ORT_CACHE_TTL = 600.0  # seconds
 
 
 def _invalidate_ort_cache() -> None:
@@ -181,7 +181,7 @@ def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
     jobs, total = job_store.list_jobs_paged(page=page, per_page=per_page)
     total_pages = max(1, (total + per_page - 1) // per_page)
     vuln_summaries = {
-        job.job_id: parse_vuln_summary(job.job_id)
+        job.job_id: get_vuln_summary(job.job_id, job.vuln_summary_json)
         for job in jobs
         if job.status.value == "success"
     }
@@ -205,28 +205,91 @@ def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
     )
 
 
+_PICK_RESULT_NAMES = {
+    "evaluation-result.yml",
+    "scan-result.yml",
+    "advisor-result.yml",
+    "analyzer-result.yml",
+    "evaluation-result.json",
+    "scan-result.json",
+    "advisor-result.json",
+    "analyzer-result.json",
+}
+
+_PICK_PRUNE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+
+import re as _re
+_RUN_DIR_RE_DASHBOARD = _re.compile(r"^[0-9a-f]{32}$")
+
+
+def _find_latest_run_dir_local(base: Path) -> str | None:
+    """Same logic as results._find_latest_run_dir, kept local to avoid circular import."""
+    if not base.exists():
+        return None
+    latest_name: str | None = None
+    latest_mtime: float = -1.0
+    try:
+        with os.scandir(base) as it:
+            for entry in it:
+                if not _RUN_DIR_RE_DASHBOARD.match(entry.name):
+                    continue
+                try:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                    mtime = entry.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    continue
+                if mtime > latest_mtime:
+                    latest_mtime = mtime
+                    latest_name = entry.name
+    except OSError:
+        return None
+    return latest_name
+
+
+def _scan_for_result_files(root: Path) -> tuple[str | None, float]:
+    """Walk ``root`` once with os.walk + DirEntry stat. Returns (latest_path, mtime)."""
+    best_path: str | None = None
+    best_mtime: float = -1.0
+    if not root.exists():
+        return None, best_mtime
+    for dirpath, dirnames, _filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _PICK_PRUNE_DIRS]
+        try:
+            with os.scandir(dirpath) as it:
+                for entry in it:
+                    if entry.name not in _PICK_RESULT_NAMES:
+                        continue
+                    try:
+                        if not entry.is_file(follow_symlinks=False):
+                            continue
+                        mtime = entry.stat(follow_symlinks=False).st_mtime
+                    except OSError:
+                        continue
+                    if mtime > best_mtime:
+                        best_mtime = mtime
+                        best_path = entry.path
+        except OSError:
+            continue
+    return best_path, best_mtime
+
+
 def _pick_existing_result_input() -> str:
-    names = {
-        "evaluation-result.yml",
-        "scan-result.yml",
-        "advisor-result.yml",
-        "analyzer-result.yml",
-        "evaluation-result.json",
-        "scan-result.json",
-        "advisor-result.json",
-        "analyzer-result.json",
-    }
+    base = settings.artifacts_dir
+    # Short-circuit: scan most recent run dir first (covers ~all real cases).
+    latest_run = _find_latest_run_dir_local(base)
+    if latest_run is not None:
+        path, _mtime = _scan_for_result_files(base / latest_run)
+        if path is not None:
+            return path
 
-    matches = [
-        path for path in settings.artifacts_dir.rglob("*")
-        if path.is_file() and path.name in names
-    ]
-    if matches:
-        latest = max(matches, key=lambda path: path.stat().st_mtime)
-        return str(latest)
+    # Fallback: scan the whole artifacts tree (rare path).
+    path, _mtime = _scan_for_result_files(base)
+    if path is not None:
+        return path
 
-    # Fallback keeps command valid syntax even if user has not generated prior results yet.
-    return str(settings.artifacts_dir / "analyzer-result.yml")
+    # Final fallback: keeps command valid syntax even if no prior results yet.
+    return str(base / "analyzer-result.yml")
 
 
 def _shell(value: str | Path) -> str:
@@ -238,13 +301,17 @@ def _base_tpl(request: Request) -> str:
 
 
 @router.get("/", response_class=HTMLResponse)
-def home(request: Request) -> HTMLResponse:
+async def home(request: Request) -> HTMLResponse:
+    import asyncio
     lang = _lang(request)
-    jobs = job_store.list_jobs(limit=20)
-
-    ort_path = _detect_ort_on_disk()
-
     notice_key = request.query_params.get("notice", "")
+
+    # Run blocking I/O concurrently to keep the event loop responsive.
+    jobs, ort_path, config_yml_content = await asyncio.gather(
+        asyncio.to_thread(job_store.list_jobs, 20),
+        asyncio.to_thread(_detect_ort_on_disk),
+        asyncio.to_thread(read_config_yml),
+    )
 
     # KPI stats
     total_jobs = len(jobs)
@@ -263,7 +330,7 @@ def home(request: Request) -> HTMLResponse:
             "notice_key": notice_key,
             "language_options": get_language_options(),
             "config_yml_path": str(get_config_yml_path()),
-            "config_yml_content": read_config_yml(),
+            "config_yml_content": config_yml_content,
             "total_jobs": total_jobs,
             "success_jobs": success_jobs,
             "failed_jobs": failed_jobs,
@@ -297,7 +364,7 @@ def jobs_partial(request: Request) -> HTMLResponse:
     total_pages = max(1, (total + per_page - 1) // per_page)
 
     vuln_summaries = {
-        job.job_id: parse_vuln_summary(job.job_id)
+        job.job_id: get_vuln_summary(job.job_id, job.vuln_summary_json)
         for job in jobs
         if job.status.value == "success"
     }

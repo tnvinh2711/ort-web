@@ -3,6 +3,29 @@
    Glassmorphism + Data-Dense Layout
    ============================================================ */
 
+/* Local fonts (vendored — no CDN dependency) */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/vendor/fonts/inter-variable.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/vendor/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/static/vendor/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+
 :root {
   /* Color palette — SaaS Blue */
   --primary: #1E40AF;

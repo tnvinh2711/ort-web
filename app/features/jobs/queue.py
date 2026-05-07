@@ -164,6 +164,17 @@ async def _run_post_analyze_pipeline(
     # Step 5: Markdown report (automatic, best effort).
     await _generate_markdown_report_for_job(job_id, output_dir, log_file, reason="ORT pipeline")
 
+    # Step 6: Cache vuln summary in DB so the job list never re-parses the YAML.
+    try:
+        import json as _json
+        summary = parse_vuln_summary(job_id)
+        job = job_store.get_job(job_id)
+        if job:
+            job.vuln_summary_json = _json.dumps(summary) if summary else None
+            job_store.update_job(job)
+    except Exception:
+        pass
+
     return report_exit
 
 

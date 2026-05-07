@@ -50,6 +50,8 @@ def cmd_open(args: argparse.Namespace) -> None:
 
     threading.Thread(target=_open_browser, daemon=True).start()
 
+    verbose = getattr(args, "verbose", False)
+
     # Start uvicorn
     os.chdir(str(PROJECT_ROOT))
     try:
@@ -59,7 +61,8 @@ def cmd_open(args: argparse.Namespace) -> None:
             host=host,
             port=port,
             reload=args.reload,
-            log_level="info",
+            log_level="info" if verbose else "warning",
+            access_log=verbose,
         )
     except KeyboardInterrupt:
         print("\nServer stopped.")
@@ -253,6 +256,7 @@ def main() -> None:
     p_open = sub.add_parser("open", help="Start server and open browser")
     p_open.add_argument("-p", "--port", type=int, default=None, help="Port (default: 8000)")
     p_open.add_argument("--reload", action="store_true", help="Enable auto-reload (dev mode)")
+    p_open.add_argument("--verbose", action="store_true", help="Verbose request logging")
     p_open.set_defaults(func=cmd_open)
 
     # update
@@ -286,6 +290,7 @@ def main() -> None:
         # Default to open
         args.port = None
         args.reload = False
+        args.verbose = False
         cmd_open(args)
     else:
         args.func(args)

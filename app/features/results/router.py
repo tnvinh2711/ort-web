@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import heapq
+import os
 import re
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,6 +22,13 @@ _HIDDEN_FILENAMES = {"analyzer-report.html", "analyzer-report-web-app.html"}
 _HIDDEN_SUFFIXES = {".xml", ".yml", ".yaml"}
 _MARKDOWN_REPORTS_PREFIX = "__markdown_reports__"
 
+# Directories to skip when walking artifact trees (Phase 3).
+# Conservative list — only common build/cache dirs that never contain ORT outputs.
+_PRUNE_DIRS = {
+    ".git", "node_modules", "__pycache__", ".venv", "venv",
+    ".gradle", ".idea", ".vscode",
+}
+
 router = APIRouter(prefix="/results", tags=["results"])
 
 
@@ -29,19 +40,72 @@ def _markdown_reports_base_dir() -> Path:
     return settings.markdown_reports_dir.resolve()
 
 
+_RUN_DIR_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
 def _find_latest_run_dir(base: Path) -> str | None:
-    # Run folders are created as job_id (32 hex chars).
-    run_pattern = re.compile(r"^[0-9a-f]{32}$")
-    candidates: list[Path] = []
-    for child in base.iterdir():
-        if child.is_dir() and run_pattern.match(child.name):
-            candidates.append(child)
-
-    if not candidates:
+    # Single os.scandir pass — DirEntry caches stat (1 syscall vs 2 with iterdir+stat).
+    if not base.exists():
         return None
+    latest_name: str | None = None
+    latest_mtime: float = -1.0
+    try:
+        with os.scandir(base) as it:
+            for entry in it:
+                if not _RUN_DIR_RE.match(entry.name):
+                    continue
+                try:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                    mtime = entry.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    continue
+                if mtime > latest_mtime:
+                    latest_mtime = mtime
+                    latest_name = entry.name
+    except OSError:
+        return None
+    return latest_name
 
-    latest = max(candidates, key=lambda path: path.stat().st_mtime)
-    return latest.name
+
+def _walk_files(root: Path, *, suffix_filter: set[str] | None = None):
+    """Yield (Path, st_mtime, st_size) for files under root, pruning known build dirs.
+
+    Uses os.walk with in-place dir pruning + DirEntry-cached stat to avoid the
+    per-entry stat() syscalls that Path.rglob makes (3-10x slower on Windows NTFS).
+    """
+    for dirpath, dirnames, _filenames in os.walk(root):
+        # Prune unwanted dirs in-place so os.walk doesn't descend into them.
+        dirnames[:] = [d for d in dirnames if d not in _PRUNE_DIRS]
+        try:
+            with os.scandir(dirpath) as it:
+                for entry in it:
+                    if not entry.is_file(follow_symlinks=False):
+                        continue
+                    if entry.name in _HIDDEN_FILENAMES:
+                        continue
+                    name = entry.name
+                    suf = ""
+                    dot = name.rfind(".")
+                    if dot >= 0:
+                        suf = name[dot:].lower()
+                    if suffix_filter is not None and suf not in suffix_filter:
+                        continue
+                    if suf in _HIDDEN_SUFFIXES:
+                        continue
+                    try:
+                        st = entry.stat(follow_symlinks=False)
+                    except OSError:
+                        continue
+                    yield Path(entry.path), st.st_mtime, st.st_size, suf
+        except OSError:
+            continue
+
+
+# Phase 4c: cache artifact scans by (search_root, parent_mtime) with short TTL.
+# Invalidates automatically when the run directory's mtime changes (new file written).
+_artifact_cache: dict[tuple[str, str | None, int], tuple[float, float, list]] = {}
+_ARTIFACT_CACHE_TTL = 30.0  # seconds
 
 
 def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> list[dict[str, str | int | bool]]:
@@ -53,26 +117,42 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
     if not search_root.exists() or not search_root.is_dir():
         return []
 
-    files: list[Path] = [
-        p
-        for p in search_root.rglob("*")
-        if p.is_file()
-        and p.name not in _HIDDEN_FILENAMES
-        and p.suffix.lower() not in _HIDDEN_SUFFIXES
-    ]
-    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    result: list[dict[str, str | int | bool]] = []
+    # Cache lookup: keyed by (root, run_dir, limit) + validated against parent mtime + TTL.
+    try:
+        parent_mtime = search_root.stat().st_mtime
+    except OSError:
+        parent_mtime = 0.0
+    cache_key = (str(base), run_dir, limit)
+    now = time.monotonic()
+    cached = _artifact_cache.get(cache_key)
+    if cached is not None:
+        cached_mtime, cached_at, cached_result = cached
+        if cached_mtime == parent_mtime and (now - cached_at) < _ARTIFACT_CACHE_TTL:
+            return cached_result
 
-    for item in files[:limit]:
-        rel_path = item.relative_to(base).as_posix()
-        suffix = item.suffix.lower()
+    # heap of (mtime, sequence, Path, size, suffix) — keep top-`limit` by mtime desc.
+    # Use heapq.nsmallest on negative mtime so the smallest-negative wins (i.e. largest mtime).
+    seq = 0
+    candidates: list[tuple[float, int, Path, int, str]] = []
+    for path, mtime, size, suf in _walk_files(search_root):
+        candidates.append((-mtime, seq, path, size, suf))
+        seq += 1
+
+    top = heapq.nsmallest(limit, candidates)
+
+    result: list[dict[str, str | int | bool]] = []
+    for _neg_mtime, _idx, path, size, suf in top:
+        try:
+            rel_path = path.relative_to(base).as_posix()
+        except ValueError:
+            continue
         result.append(
             {
                 "path": rel_path,
-                "filename": item.name,
-                "size": item.stat().st_size,
-                "is_html": suffix in {".html", ".htm"},
-                "is_text": suffix in {".json", ".yml", ".yaml", ".txt", ".log", ".xml", ".csv", ".md"},
+                "filename": path.name,
+                "size": size,
+                "is_html": suf in {".html", ".htm"},
+                "is_text": suf in {".json", ".yml", ".yaml", ".txt", ".log", ".xml", ".csv", ".md"},
             }
         )
 
@@ -80,22 +160,28 @@ def _collect_artifact_files(limit: int = 120, run_dir: str | None = None) -> lis
     if markdown_base != base:
         markdown_root = markdown_base / run_dir if run_dir else markdown_base
         if markdown_root.exists() and markdown_root.is_dir():
-            markdown_files = sorted(
-                [p for p in markdown_root.rglob("*.md") if p.is_file()],
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            for item in markdown_files[: max(0, limit - len(result))]:
-                rel_path = item.relative_to(markdown_base).as_posix()
+            md_seq = 0
+            md_candidates: list[tuple[float, int, Path, int]] = []
+            for path, mtime, size, _suf in _walk_files(markdown_root, suffix_filter={".md"}):
+                md_candidates.append((-mtime, md_seq, path, size))
+                md_seq += 1
+            md_top = heapq.nsmallest(max(0, limit - len(result)), md_candidates)
+            for _neg, _idx, path, size in md_top:
+                try:
+                    rel_path = path.relative_to(markdown_base).as_posix()
+                except ValueError:
+                    continue
                 result.append(
                     {
                         "path": f"{_MARKDOWN_REPORTS_PREFIX}/{rel_path}",
-                        "filename": item.name,
-                        "size": item.stat().st_size,
+                        "filename": path.name,
+                        "size": size,
                         "is_html": False,
                         "is_text": True,
                     }
                 )
+
+    _artifact_cache[cache_key] = (parent_mtime, now, result)
     return result
 
 
@@ -125,24 +211,34 @@ def _resolve_artifact_path(path_value: str) -> Path:
     return candidate
 
 
+def _safe_render_jobs_list(lang: str) -> str:
+    try:
+        return render_jobs_list_html(lang)
+    except Exception:
+        return ""
+
+
 @router.get("/", response_class=HTMLResponse)
-def results_page(request: Request) -> HTMLResponse:
+async def results_page(request: Request) -> HTMLResponse:
     lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
     show_all = request.query_params.get("scope") == "all"
     base = _artifact_base_dir()
-    latest_run_dir = _find_latest_run_dir(base) if base.exists() else None
+    latest_run_dir = (
+        await asyncio.to_thread(_find_latest_run_dir, base) if base.exists() else None
+    )
     selected_run = None if show_all else latest_run_dir
-    artifact_files = _collect_artifact_files(run_dir=selected_run)
+
+    # Run filesystem scan + jobs list render concurrently.
+    artifact_files, initial_jobs_html = await asyncio.gather(
+        asyncio.to_thread(_collect_artifact_files, run_dir=selected_run),
+        asyncio.to_thread(_safe_render_jobs_list, lang),
+    )
 
     # Fallback: if there are no run folders yet, still show base artifacts.
     if not artifact_files and not show_all:
-        artifact_files = _collect_artifact_files(run_dir=None)
+        artifact_files = await asyncio.to_thread(_collect_artifact_files, run_dir=None)
 
     is_htmx = request.headers.get("HX-Request")
-    try:
-        initial_jobs_html = render_jobs_list_html(lang)
-    except Exception:
-        initial_jobs_html = ""
     return templates.TemplateResponse(
         request,
         "results/index.html",

@@ -6,11 +6,27 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from app.config import ensure_runtime_dirs, settings
 from app.features.jobs.queue import job_queue
 from app.features.jobs.store import job_store
 from app.features.routes import include_feature_routes
+
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles subclass that sets long-lived cache headers.
+
+    Cache-busting is done via ?v={app_version} query param in templates.
+    """
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers.setdefault(
+                "Cache-Control", "public, max-age=31536000, immutable"
+            )
+        return response
 
 
 @asynccontextmanager
@@ -26,7 +42,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", CachedStaticFiles(directory="app/static"), name="static")
 
 include_feature_routes(app)
 

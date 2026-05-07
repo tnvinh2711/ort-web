@@ -1,7 +1,22 @@
 """Language detection for source code projects."""
 
+import os
 from pathlib import Path
 from typing import Optional
+
+
+# Directories never useful for language detection — pruned in-place during walk
+# so we don't descend into them at all (was a real bug previously: only filename
+# was checked, so node_modules contents WERE scanned).
+_DETECT_PRUNE_DIRS = {
+    "node_modules", ".git", ".venv", "venv", "env",
+    "__pycache__", ".gradle", ".idea", ".vscode",
+    "build", "dist", "target", "out", "obj",
+}
+
+_DETECT_FILE_HARD_CAP = 20000  # never scan more than this many files
+_DETECT_EARLY_FILES = 5000     # consider early termination after this many
+_DETECT_EARLY_LEAD = 10        # leader must have >= this multiple of #2 to stop early
 
 
 # Common file extensions by programming language
@@ -60,41 +75,50 @@ def get_package_manager_categories(language: str) -> list[str]:
 def detect_language(project_path: str) -> Optional[str]:
     """
     Auto-detect the primary programming language of a project.
-    
+
     Args:
         project_path: Path to the project directory
-        
+
     Returns:
         Detected language name or None if not detected
     """
     project = Path(project_path)
-    
     if not project.exists() or not project.is_dir():
         return None
-    
-    # Count language matches
-    language_scores = {}
-    
-    # Recursively search for files
-    for file_path in project.rglob("*"):
-        if not file_path.is_file():
-            continue
-        
-        # Skip hidden and common ignored files
-        name = file_path.name
-        if name.startswith(".") or name in {"node_modules", ".git", ".venv", "venv", "env"}:
-            continue
-        
-        suffix = file_path.suffix
-        
-        for lang, patterns in LANGUAGE_PATTERNS.items():
-            if suffix in patterns or name in patterns:
-                language_scores[lang] = language_scores.get(lang, 0) + 1
-    
+
+    language_scores: dict[str, int] = {}
+    files_scanned = 0
+
+    # os.walk + in-place dir prune so we never descend into node_modules/.git/etc.
+    # (Path.rglob can't prune; previous code only filtered by FILENAME so
+    # node_modules/foo.js was still walked — major perf bug on JS projects.)
+    for dirpath, dirnames, filenames in os.walk(project):
+        dirnames[:] = [d for d in dirnames if d not in _DETECT_PRUNE_DIRS and not d.startswith(".")]
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            files_scanned += 1
+            dot = name.rfind(".")
+            suffix = name[dot:] if dot >= 0 else ""
+
+            for lang, patterns in LANGUAGE_PATTERNS.items():
+                if suffix in patterns or name in patterns:
+                    language_scores[lang] = language_scores.get(lang, 0) + 1
+
+            # Early termination — leader is overwhelmingly dominant.
+            if files_scanned == _DETECT_EARLY_FILES and len(language_scores) >= 2:
+                ranked = sorted(language_scores.values(), reverse=True)
+                if ranked[0] >= ranked[1] * _DETECT_EARLY_LEAD:
+                    return max(language_scores.items(), key=lambda x: x[1])[0]
+
+            if files_scanned >= _DETECT_FILE_HARD_CAP:
+                if language_scores:
+                    return max(language_scores.items(), key=lambda x: x[1])[0]
+                return None
+
     if not language_scores:
         return None
-    
-    # Return language with highest score
+
     return max(language_scores.items(), key=lambda x: x[1])[0]
 
 
