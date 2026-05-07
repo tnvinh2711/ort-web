@@ -176,6 +176,35 @@ def _format_datetime(value: str | None) -> str:
         return value
 
 
+def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
+    """Render the first page of jobs as an HTML string for SSR embedding."""
+    jobs, total = job_store.list_jobs_paged(page=page, per_page=per_page)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    vuln_summaries = {
+        job.job_id: parse_vuln_summary(job.job_id)
+        for job in jobs
+        if job.status.value == "success"
+    }
+    tpl = templates.env.get_template("dashboard/jobs_list.html")
+    return tpl.render(
+        lang=lang,
+        t=lambda key: translate(lang, key),
+        fmt_dt=_format_datetime,
+        jobs=jobs,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        vuln_summaries=vuln_summaries,
+        status_map={
+            "pending": translate(lang, "status.pending"),
+            "running": translate(lang, "status.running"),
+            "success": translate(lang, "status.success"),
+            "failed": translate(lang, "status.failed"),
+            "cancelled": translate(lang, "status.cancelled"),
+        },
+    )
+
+
 def _pick_existing_result_input() -> str:
     names = {
         "evaluation-result.yml",

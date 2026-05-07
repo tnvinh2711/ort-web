@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from app.config import settings
 from app.i18n import translate
 from app.features.shared.language_detector import get_language_options
+from app.features.dashboard.router import render_jobs_list_html
 from app.shared_templates import templates
 
 # Files to hide from the results listing.
@@ -138,6 +139,10 @@ def results_page(request: Request) -> HTMLResponse:
         artifact_files = _collect_artifact_files(run_dir=None)
 
     is_htmx = request.headers.get("HX-Request")
+    try:
+        initial_jobs_html = render_jobs_list_html(lang)
+    except Exception:
+        initial_jobs_html = ""
     return templates.TemplateResponse(
         request,
         "results/index.html",
@@ -149,6 +154,7 @@ def results_page(request: Request) -> HTMLResponse:
             "artifact_files": artifact_files,
             "latest_run_dir": latest_run_dir,
             "show_all": show_all,
+            "initial_jobs_html": initial_jobs_html,
             "base_template": "base_partial.html" if is_htmx else "base.html",
         },
     )

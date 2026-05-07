@@ -56,7 +56,7 @@
     hx-trigger="refresh-jobs, keyup changed delay:300ms from:#jobs-filter-q, change from:#jobs-filter-status, change from:#jobs-filter-language"
     hx-swap="innerHTML"
     hx-on::after-settle="scheduleJobsPoll()"
-  ></div>
+  >{{ initial_jobs_html | safe }}</div>
 
   <script>
     var timeSelect = document.getElementById('jobs-filter-time');
@@ -173,8 +173,15 @@
       }
     }
 
-    // Initial load: always use direct fetch — never depends on HTMX hx-trigger="load"
-    _loadJobsList();
+    // Initial load: use SSR-embedded HTML if available, fallback to fetch
+    (function() {
+      var c = document.getElementById('jobs-container');
+      if (c && c.innerHTML.trim() === '') {
+        _loadJobsList();
+      } else {
+        scheduleJobsPoll();
+      }
+    })();
 
   </script>
 </section>
