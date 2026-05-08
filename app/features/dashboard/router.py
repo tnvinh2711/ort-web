@@ -24,8 +24,9 @@ from app.shared_templates import templates
 
 router = APIRouter()
 
-# Cache ORT detection result — running `ort --version` starts the JVM (2-5 s).
-# Recheck at most every 10 minutes; invalidated explicitly via _invalidate_ort_cache().
+# Cache ORT detection. Detection itself is now a few exists() calls (no JVM
+# probe), but we still cache to keep page rendering snappy and avoid hammering
+# disk on every request.
 _ort_cache: dict = {"path": None, "at": 0.0, "valid": False}
 _ORT_CACHE_TTL = 600.0  # seconds
 
@@ -35,31 +36,18 @@ def _invalidate_ort_cache() -> None:
 
 
 def _is_ort_install_healthy(binary_path: Path) -> bool:
-    if not binary_path.exists():
-        return False
-    try:
-        cmd = [str(binary_path), "--version"]
-        if os.name == "nt" and binary_path.suffix.lower() == ".bat":
-            cmd = ["cmd", "/c", *cmd]
+    """Treat the binary's existence as proof of installation.
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+    We previously ran ``ort --version`` to verify the install, but on slow
+    Windows devices the JVM cold start regularly exceeded the 20s subprocess
+    timeout, causing the dashboard to falsely report "not installed". A
+    truly broken install will surface its error when an actual job runs.
+    """
+    return binary_path.exists()
 
 
 def _detect_ort_on_disk() -> str | None:
-    """Check known locations for a working ORT binary, independent of job history.
-
-    Result is cached for _ORT_CACHE_TTL seconds because launching `ort --version`
-    starts the JVM and can take 2-5 seconds per candidate path.
-    """
+    """Check known locations for the ORT binary."""
     now = time.monotonic()
     if _ort_cache["valid"] and (now - _ort_cache["at"]) < _ORT_CACHE_TTL:
         return _ort_cache["path"]
@@ -105,7 +93,13 @@ def _detect_ort_on_disk() -> str | None:
             found = str(path)
             break
 
-    _ort_cache.update({"path": found, "at": now, "valid": True})
+    # Only cache positive detections. Caching None as valid would stick the
+    # "not installed" state for 10 minutes if the very first probe happened
+    # to lose a race (e.g., file system was momentarily unreadable).
+    if found is not None:
+        _ort_cache.update({"path": found, "at": now, "valid": True})
+    else:
+        _ort_cache.update({"path": None, "at": now, "valid": False})
     return found
 
 
