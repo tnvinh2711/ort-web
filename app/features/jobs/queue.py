@@ -133,10 +133,16 @@ async def _generate_markdown_report_for_job(
 
 
 async def _run_post_analyze_pipeline(
-    job_id: str, analyze_command: str, work_dir: str, log_file: Path
+    job: Job, log_file: Path
 ) -> int:
-    """Chain after analyze: scan -> advise (OSV) -> report -> inventory CSV."""
-    output_dir = _extract_output_dir(analyze_command)
+    """Chain after analyze: scan -> advise (OSV) -> report -> inventory CSV.
+
+    Mutates ``job.vuln_summary_json`` in place so the caller's final
+    ``job_store.update_job(job)`` persists it. Writing through a fresh fetch
+    here would be silently overwritten by that final update.
+    """
+    job_id = job.job_id
+    output_dir = _extract_output_dir(job.command)
     if not output_dir:
         return 0
 
@@ -156,7 +162,7 @@ async def _run_post_analyze_pipeline(
             f"--scanners ScanCode"
         )
         await _log_info(job_id, log_file, "Running Scanner (ScanCode)...")
-        scan_exit = await run_ort_command(job_id, scan_cmd, work_dir, log_file)
+        scan_exit = await run_ort_command(job_id, scan_cmd, job.work_dir, log_file)
         if scan_exit != 0:
             await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
     else:
@@ -174,7 +180,7 @@ async def _run_post_analyze_pipeline(
         f"--advisors OSV"
     )
     await _log_info(job_id, log_file, "Analyze completed. Running Advisor (OSV)...")
-    advise_exit = await run_ort_command(job_id, advise_cmd, work_dir, log_file)
+    advise_exit = await run_ort_command(job_id, advise_cmd, job.work_dir, log_file)
 
     # Step 3: Report — prefer advisor, then scan (if available), then analyzer.
     if advise_exit == 0 and advisor_result.exists():
@@ -191,7 +197,7 @@ async def _run_post_analyze_pipeline(
         f"--report-formats StaticHtml,WebApp"
     )
     await _log_info(job_id, log_file, f"Generating report from {input_result.name}...")
-    report_exit = await run_ort_command(job_id, report_cmd, work_dir, log_file)
+    report_exit = await run_ort_command(job_id, report_cmd, job.work_dir, log_file)
 
     if report_exit == 0:
         created = _create_analyzer_html_aliases(output_dir)
@@ -211,16 +217,14 @@ async def _run_post_analyze_pipeline(
     # Step 5: Markdown report (automatic, best effort).
     await _generate_markdown_report_for_job(job_id, output_dir, log_file, reason="ORT pipeline")
 
-    # Step 6: Cache vuln summary in DB so the job list never re-parses the YAML.
+    # Step 6: Cache vuln summary on the job. Store "null" (not Python None) so
+    # DB-cached=True even when no vulns found — None means "never computed" and
+    # would force YAML re-parse on every list load. The caller persists this
+    # via its final job_store.update_job(job).
     try:
         import json as _json
         summary = parse_vuln_summary(job_id)
-        job = job_store.get_job(job_id)
-        if job:
-            # Store "null" (not Python None) so DB-cached=True even when no vulns found.
-            # None in DB means "never computed" → forces YAML re-parse on every list load.
-            job.vuln_summary_json = _json.dumps(summary)
-            job_store.update_job(job)
+        job.vuln_summary_json = _json.dumps(summary)
     except Exception:
         pass
 
@@ -440,9 +444,7 @@ class JobQueue:
                 if job_id in self._cancelled:
                     return
                 if exit_code == 0 and "analyze" in command_tokens:
-                    exit_code = await _run_post_analyze_pipeline(
-                        job.job_id, job.command, job.work_dir, log_file
-                    )
+                    exit_code = await _run_post_analyze_pipeline(job, log_file)
                 elif exit_code == 0 and "report" in command_tokens:
                     output_dir = _extract_output_dir(job.command)
                     if output_dir:
