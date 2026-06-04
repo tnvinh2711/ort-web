@@ -1,0 +1,17 @@
+# CVE-2019-6975, CVE-2021-33203, CVE-2021-33571 — Django multiple vulns
+Django==2.2.0
+
+# CVE-2021-34552, CVE-2021-28676, CVE-2021-28677 — arbitrary code execution
+Pillow==8.1.0
+
+# CVE-2018-18074 — redirect credentials to third party
+requests==2.19.1
+
+# CVE-2018-10903 — PRNG weakness
+cryptography==2.2.2
+
+# CVE-2022-21699 — arbitrary code execution in notebooks
+ipython==7.16.0
+
+# CVE-2021-3572 — insecure temp directory
+pip==21.0

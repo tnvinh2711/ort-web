@@ -1,0 +1,404 @@
+---
+formatVersion: "1.0.0"
+
+# =============================================================================
+# ORT (OSS Review Toolkit) Analyzer Result
+# Project  : com.example:java-vuln-pom:1.0.0
+# Generated: 2026-05-12T00:10:00.000Z
+# Tool     : ORT v17.0.0 — Maven package manager
+# =============================================================================
+
+analyzer:
+  startTime: "2026-05-12T00:10:00.000Z"
+  endTime: "2026-05-12T00:11:15.000Z"
+  environment:
+    ortVersion: "17.0.0"
+    javaVersion: "17.0.9"
+    os: "Windows 11 Pro 10.0.22631"
+    processors: 8
+    maxMemory: 8192
+    variables: {}
+    toolVersions:
+      Maven: "3.9.6"
+      Java: "17.0.9"
+  config:
+    ignoreToolVersions: false
+    allowDynamicVersions: false
+    enablePackageCurationProviders: []
+
+  result:
+    projects:
+      - id: "Maven:com.example:java-vuln-pom:1.0.0"
+        definitionFilePath: "pom.xml"
+        authors: []
+        declaredLicenses: []
+        declaredLicensesProcessed:
+          spdxExpression: ""
+          mapped: {}
+          unmapped: []
+        # NOTE: No LICENSE file and no <licenses> block in pom.xml.
+        # Project does not declare its own license.
+        vcs:
+          type: ""
+          url: ""
+          revision: ""
+          path: ""
+        vcsProcessed:
+          type: ""
+          url: ""
+          revision: ""
+          path: ""
+        homepageUrl: ""
+        scopeDependencies:
+          - scope: "compile"
+            dependencies:
+              - id: "Maven:org.apache.logging.log4j:log4j-core:2.14.1"
+                dependencies:
+                  - id: "Maven:org.apache.logging.log4j:log4j-api:2.14.1"
+                    dependencies: []
+              - id: "Maven:com.fasterxml.jackson.core:jackson-databind:2.9.10.1"
+                dependencies:
+                  - id: "Maven:com.fasterxml.jackson.core:jackson-annotations:2.9.10"
+                    dependencies: []
+                  - id: "Maven:com.fasterxml.jackson.core:jackson-core:2.9.10"
+                    dependencies: []
+        issues: {}
+
+    packages:
+      # -----------------------------------------------------------------------
+      # Direct — compile scope
+      # -----------------------------------------------------------------------
+
+      - package:
+          id: "Maven:org.apache.logging.log4j:log4j-core:2.14.1"
+          purl: "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"
+          authors:
+            - "Apache Software Foundation"
+          declaredLicenses:
+            - "Apache-2.0"
+          declaredLicensesProcessed:
+            spdxExpression: "Apache-2.0"
+            mapped:
+              "Apache License, Version 2.0": "Apache-2.0"
+            unmapped: []
+          description: >
+            The Apache Log4j Implementation. Core component of the Log4j 2 logging
+            framework for Java. WARNING: version 2.14.1 is affected by Log4Shell
+            (CVE-2021-44228), a critical JNDI-injection RCE vulnerability.
+          homepageUrl: "https://logging.apache.org/log4j/2.x/"
+          binaryArtifact:
+            url: "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/log4j-core-2.14.1.jar"
+            hash:
+              value: "sha1:9da0f5ca7c8eab693d090ae759275b9db4ca5acb"
+              algorithm: "SHA-1"
+          sourceArtifact:
+            url: "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/log4j-core-2.14.1-sources.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          vcs:
+            type: "Git"
+            url: "https://github.com/apache/logging-log4j2.git"
+            revision: "rel/2.14.1"
+            path: "log4j-core"
+          vcsProcessed:
+            type: "Git"
+            url: "https://github.com/apache/logging-log4j2.git"
+            revision: "rel/2.14.1"
+            path: "log4j-core"
+        curations: []
+
+      - package:
+          id: "Maven:com.fasterxml.jackson.core:jackson-databind:2.9.10.1"
+          purl: "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.9.10.1"
+          authors:
+            - "Tatu Saloranta"
+          declaredLicenses:
+            - "Apache-2.0"
+          declaredLicensesProcessed:
+            spdxExpression: "Apache-2.0"
+            mapped:
+              "The Apache Software License, Version 2.0": "Apache-2.0"
+            unmapped: []
+          description: >
+            General data-binding functionality for Jackson: works on core streaming API.
+            WARNING: version 2.9.10.1 contains multiple unsafe deserialization gadget
+            chain vulnerabilities (post-2.9.10.1 CVEs remain unfixed in this branch).
+          homepageUrl: "https://github.com/FasterXML/jackson-databind"
+          binaryArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.9.10.1/jackson-databind-2.9.10.1.jar"
+            hash:
+              value: "sha1:980bbe2628e14ac5e0e4cfd0f84d6d59de33ff68"
+              algorithm: "SHA-1"
+          sourceArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.9.10.1/jackson-databind-2.9.10.1-sources.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          vcs:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-databind.git"
+            revision: "jackson-databind-2.9.10.1"
+            path: ""
+          vcsProcessed:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-databind.git"
+            revision: "jackson-databind-2.9.10.1"
+            path: ""
+        curations: []
+
+      # -----------------------------------------------------------------------
+      # Transitive — pulled in by log4j-core
+      # -----------------------------------------------------------------------
+
+      - package:
+          id: "Maven:org.apache.logging.log4j:log4j-api:2.14.1"
+          purl: "pkg:maven/org.apache.logging.log4j/log4j-api@2.14.1"
+          authors:
+            - "Apache Software Foundation"
+          declaredLicenses:
+            - "Apache-2.0"
+          declaredLicensesProcessed:
+            spdxExpression: "Apache-2.0"
+            mapped:
+              "Apache License, Version 2.0": "Apache-2.0"
+            unmapped: []
+          description: "The Apache Log4j API — public interface for the Log4j 2 logging framework."
+          homepageUrl: "https://logging.apache.org/log4j/2.x/"
+          binaryArtifact:
+            url: "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.14.1/log4j-api-2.14.1.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          sourceArtifact:
+            url: "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.14.1/log4j-api-2.14.1-sources.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          vcs:
+            type: "Git"
+            url: "https://github.com/apache/logging-log4j2.git"
+            revision: "rel/2.14.1"
+            path: "log4j-api"
+          vcsProcessed:
+            type: "Git"
+            url: "https://github.com/apache/logging-log4j2.git"
+            revision: "rel/2.14.1"
+            path: "log4j-api"
+        curations: []
+
+      # -----------------------------------------------------------------------
+      # Transitive — pulled in by jackson-databind
+      # -----------------------------------------------------------------------
+
+      - package:
+          id: "Maven:com.fasterxml.jackson.core:jackson-core:2.9.10"
+          purl: "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.9.10"
+          authors:
+            - "Tatu Saloranta"
+          declaredLicenses:
+            - "Apache-2.0"
+          declaredLicensesProcessed:
+            spdxExpression: "Apache-2.0"
+            mapped:
+              "The Apache Software License, Version 2.0": "Apache-2.0"
+            unmapped: []
+          description: "Core Jackson processing abstractions (Streaming API) and its default implementation."
+          homepageUrl: "https://github.com/FasterXML/jackson-core"
+          binaryArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.9.10/jackson-core-2.9.10.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          sourceArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.9.10/jackson-core-2.9.10-sources.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          vcs:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-core.git"
+            revision: "jackson-core-2.9.10"
+            path: ""
+          vcsProcessed:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-core.git"
+            revision: "jackson-core-2.9.10"
+            path: ""
+        curations: []
+
+      - package:
+          id: "Maven:com.fasterxml.jackson.core:jackson-annotations:2.9.10"
+          purl: "pkg:maven/com.fasterxml.jackson.core/jackson-annotations@2.9.10"
+          authors:
+            - "Tatu Saloranta"
+          declaredLicenses:
+            - "Apache-2.0"
+          declaredLicensesProcessed:
+            spdxExpression: "Apache-2.0"
+            mapped:
+              "The Apache Software License, Version 2.0": "Apache-2.0"
+            unmapped: []
+          description: "Core annotations used for value types, used by Jackson data-binding package."
+          homepageUrl: "https://github.com/FasterXML/jackson-annotations"
+          binaryArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.9.10/jackson-annotations-2.9.10.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          sourceArtifact:
+            url: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.9.10/jackson-annotations-2.9.10-sources.jar"
+            hash:
+              value: ""
+              algorithm: ""
+          vcs:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-annotations.git"
+            revision: "jackson-annotations-2.9.10"
+            path: ""
+          vcsProcessed:
+            type: "Git"
+            url: "https://github.com/FasterXML/jackson-annotations.git"
+            revision: "jackson-annotations-2.9.10"
+            path: ""
+        curations: []
+
+    issues: {}
+
+# =============================================================================
+# Scanner Results — Source Code License Findings
+# Scanner: ScanCode v32.1.0
+# =============================================================================
+
+scanner:
+  startTime: "2026-05-12T00:11:15.000Z"
+  endTime: "2026-05-12T00:12:00.000Z"
+  environment:
+    ortVersion: "17.0.0"
+    javaVersion: "17.0.9"
+    os: "Windows 11 Pro 10.0.22631"
+    processors: 8
+    maxMemory: 8192
+    variables: {}
+    toolVersions:
+      ScanCode: "32.1.0"
+  config:
+    createMissingArchives: false
+    detectedLicenseMapping: {}
+    ignoredAuthors: []
+    ignorePatterns:
+      - "**/*Test.java"
+      - "**/target/**"
+    scannerWrappers:
+      - scanner:
+          name: "ScanCode"
+          version: "32.1.0"
+          configuration: "--copyright --license --license-text --json-pp"
+  results:
+    entries:
+      - key:
+          id: "Maven:com.example:java-vuln-pom:1.0.0"
+          provenance:
+            vcsInfo:
+              type: ""
+              url: ""
+              revision: ""
+              resolvedRevision: ""
+              path: ""
+        value:
+          - scanner:
+              name: "ScanCode"
+              version: "32.1.0"
+              configuration: "--copyright --license --license-text --json-pp"
+            summary:
+              startTime: "2026-05-12T00:11:20.000Z"
+              endTime: "2026-05-12T00:11:25.000Z"
+              packageVerificationCode: ""
+              licenseFindings: []
+              copyrightFindings: []
+              issues:
+                - severity: "WARNING"
+                  message: >
+                    No license declared in pom.xml (<licenses> section absent).
+                    No LICENSE or NOTICE file found in project root.
+                    Source file src/main/java/com/example/App.java contains no
+                    copyright header or SPDX identifier.
+
+      - key:
+          id: "Maven:org.apache.logging.log4j:log4j-core:2.14.1"
+          provenance:
+            sourceArtifactUrl: "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/log4j-core-2.14.1-sources.jar"
+        value:
+          - scanner:
+              name: "ScanCode"
+              version: "32.1.0"
+              configuration: "--copyright --license --license-text --json-pp"
+            summary:
+              startTime: "2026-05-12T00:11:25.000Z"
+              endTime: "2026-05-12T00:11:35.000Z"
+              packageVerificationCode: ""
+              licenseFindings:
+                - license: "Apache-2.0"
+                  location:
+                    path: "LICENSE"
+                    startLine: 1
+                    endLine: 202
+                  score: 100.0
+                - license: "Apache-2.0"
+                  location:
+                    path: "pom.xml"
+                    startLine: 1
+                    endLine: 1
+                  score: 100.0
+              copyrightFindings:
+                - statement: "Copyright 1999-2021 The Apache Software Foundation"
+                  location:
+                    path: "NOTICE"
+                    startLine: 2
+                    endLine: 2
+              issues: []
+
+      - key:
+          id: "Maven:com.fasterxml.jackson.core:jackson-databind:2.9.10.1"
+          provenance:
+            sourceArtifactUrl: "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.9.10.1/jackson-databind-2.9.10.1-sources.jar"
+        value:
+          - scanner:
+              name: "ScanCode"
+              version: "32.1.0"
+              configuration: "--copyright --license --license-text --json-pp"
+            summary:
+              startTime: "2026-05-12T00:11:35.000Z"
+              endTime: "2026-05-12T00:11:45.000Z"
+              packageVerificationCode: ""
+              licenseFindings:
+                - license: "Apache-2.0"
+                  location:
+                    path: "LICENSE"
+                    startLine: 1
+                    endLine: 202
+                  score: 100.0
+              copyrightFindings:
+                - statement: "Copyright 2007- Tatu Saloranta, tatu.saloranta@iki.fi"
+                  location:
+                    path: "src/main/java/com/fasterxml/jackson/databind/ObjectMapper.java"
+                    startLine: 3
+                    endLine: 3
+              issues: []
+
+# =============================================================================
+# License Summary
+# =============================================================================
+#
+#  Package                                          Scope    Declared License  Effective SPDX
+#  -----------------------------------------------  -------  ----------------  --------------
+#  Maven:com.example:java-vuln-pom:1.0.0            project  (none)            NOASSERTION
+#  Maven:org.apache.logging.log4j:log4j-core:2.14.1 compile  Apache-2.0        Apache-2.0
+#  Maven:org.apache.logging.log4j:log4j-api:2.14.1  compile  Apache-2.0        Apache-2.0
+#  Maven:com.fasterxml.jackson.core:jackson-databind compile  Apache-2.0        Apache-2.0
+#  Maven:com.fasterxml.jackson.core:jackson-core     compile  Apache-2.0        Apache-2.0
+#  Maven:com.fasterxml.jackson.core:jackson-annotations compile Apache-2.0      Apache-2.0
+#
+#  License conflicts : NONE (all dependencies use Apache-2.0)
+#  Issues            : 1 WARNING — project itself has no declared license
+# =============================================================================

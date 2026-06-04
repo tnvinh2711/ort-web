@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.types import Scope
 
 from app.config import ensure_runtime_dirs, settings
@@ -42,6 +43,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", CachedStaticFiles(directory="app/static"), name="static")
 
 include_feature_routes(app)

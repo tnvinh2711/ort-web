@@ -1,0 +1,390 @@
+{
+  "headers": [
+    {
+      "tool_name": "scancode-toolkit",
+      "tool_version": "32.5.0",
+      "options": {
+        "input": [
+          "."
+        ],
+        "--copyright": true,
+        "--json-pp": "scan-result2.json",
+        "--license": true,
+        "--processes": "2",
+        "--timeout": "60.0"
+      },
+      "notice": "Generated with ScanCode and provided on an \"AS IS\" BASIS, WITHOUT WARRANTIES\nOR CONDITIONS OF ANY KIND, either express or implied. No content created from\nScanCode should be considered or used as legal advice. Consult an Attorney\nfor any legal advice.\nScanCode is a free software code scanning tool from nexB Inc. and others.\nVisit https://github.com/nexB/scancode-toolkit/ for support and download.",
+      "start_timestamp": "2026-05-15T073430.268369",
+      "end_timestamp": "2026-05-15T073450.325079",
+      "output_format_version": "4.1.0",
+      "duration": 20.05670952796936,
+      "message": null,
+      "errors": [],
+      "warnings": [],
+      "extra_data": {
+        "system_environment": {
+          "operating_system": "win",
+          "cpu_architecture": "64",
+          "platform": "Windows-10-10.0.22631-SP0",
+          "platform_version": "10.0.22631",
+          "python_version": "3.10.11 (tags/v3.10.11:7d4cc5a, Apr  5 2023, 00:38:17) [MSC v.1929 64 bit (AMD64)]"
+        },
+        "spdx_license_list_version": "3.27",
+        "files_count": 4
+      }
+    }
+  ],
+  "license_detections": [
+    {
+      "identifier": "json-981d329b-9269-f448-9907-b92bd76e2ea9",
+      "license_expression": "json",
+      "license_expression_spdx": "JSON",
+      "detection_count": 3,
+      "reference_matches": [
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 40,
+          "end_line": 41,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 45,
+          "end_line": 46,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        }
+      ]
+    },
+    {
+      "identifier": "json-5a147f0a-8bb9-2c30-1661-51ca74b63e45",
+      "license_expression": "json",
+      "license_expression_spdx": "JSON",
+      "detection_count": 1,
+      "reference_matches": [
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 118,
+          "end_line": 119,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 121,
+          "end_line": 122,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 125,
+          "end_line": 126,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        }
+      ]
+    },
+    {
+      "identifier": "json-a22df283-4cbb-b1f3-dac1-6aa82c584b30",
+      "license_expression": "json",
+      "license_expression_spdx": "JSON",
+      "detection_count": 1,
+      "reference_matches": [
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "from_file": "cpp-vuln/scan-result.json",
+          "start_line": 11,
+          "end_line": 12,
+          "matcher": "2-aho",
+          "score": 100.0,
+          "matched_length": 2,
+          "match_coverage": 100.0,
+          "rule_relevance": 100,
+          "rule_identifier": "json_5.RULE",
+          "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "cpp-vuln",
+      "type": "directory",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "copyrights": [],
+      "holders": [],
+      "authors": [],
+      "scan_errors": []
+    },
+    {
+      "path": "cpp-vuln/CMakeLists.txt",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "copyrights": [],
+      "holders": [],
+      "authors": [],
+      "scan_errors": []
+    },
+    {
+      "path": "cpp-vuln/conanfile.txt",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "copyrights": [],
+      "holders": [],
+      "authors": [],
+      "scan_errors": []
+    },
+    {
+      "path": "cpp-vuln/main.cpp",
+      "type": "file",
+      "detected_license_expression": null,
+      "detected_license_expression_spdx": null,
+      "license_detections": [],
+      "license_clues": [],
+      "percentage_of_license_text": 0,
+      "copyrights": [],
+      "holders": [],
+      "authors": [],
+      "scan_errors": []
+    },
+    {
+      "path": "cpp-vuln/scan-result.json",
+      "type": "file",
+      "detected_license_expression": "json",
+      "detected_license_expression_spdx": "JSON",
+      "license_detections": [
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "matches": [
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 11,
+              "end_line": 12,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            }
+          ],
+          "identifier": "json-a22df283-4cbb-b1f3-dac1-6aa82c584b30"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "matches": [
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 40,
+              "end_line": 41,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            },
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 45,
+              "end_line": 46,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            }
+          ],
+          "identifier": "json-981d329b-9269-f448-9907-b92bd76e2ea9"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "matches": [
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 118,
+              "end_line": 119,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            },
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 121,
+              "end_line": 122,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            },
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 125,
+              "end_line": 126,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            }
+          ],
+          "identifier": "json-5a147f0a-8bb9-2c30-1661-51ca74b63e45"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "matches": [
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 142,
+              "end_line": 143,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            },
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 146,
+              "end_line": 147,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            }
+          ],
+          "identifier": "json-981d329b-9269-f448-9907-b92bd76e2ea9"
+        },
+        {
+          "license_expression": "json",
+          "license_expression_spdx": "JSON",
+          "matches": [
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 163,
+              "end_line": 164,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            },
+            {
+              "license_expression": "json",
+              "license_expression_spdx": "JSON",
+              "from_file": "cpp-vuln/scan-result.json",
+              "start_line": 167,
+              "end_line": 168,
+              "matcher": "2-aho",
+              "score": 100.0,
+              "matched_length": 2,
+              "match_coverage": 100.0,
+              "rule_relevance": 100,
+              "rule_identifier": "json_5.RULE",
+              "rule_url": "https://github.com/nexB/scancode-toolkit/tree/develop/src/licensedcode/data/rules/json_5.RULE"
+            }
+          ],
+          "identifier": "json-981d329b-9269-f448-9907-b92bd76e2ea9"
+        }
+      ],
+      "license_clues": [],
+      "percentage_of_license_text": 3.26,
+      "copyrights": [],
+      "holders": [],
+      "authors": [],
+      "scan_errors": []
+    }
+  ]
+}

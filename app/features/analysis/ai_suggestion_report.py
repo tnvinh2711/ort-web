@@ -54,6 +54,9 @@ def _extract_name_version_from_id(value: str) -> tuple[str, str] | None:
         return None
 
     package_name = name.lstrip(":").strip()
+    # NPM scoped packages: @scope:name → @scope/name (e.g. NPM:@babel:core → @babel/core)
+    if package_name.startswith("@") and ":" in package_name:
+        package_name = package_name.replace(":", "/", 1)
     package_version = version.strip()
     if not package_name or not package_version:
         return None
@@ -186,9 +189,13 @@ def _infer_package_manager(command: str, analyzer_data: Any) -> str:
             project_id = str(project.get("id") or "")
             if project_id.startswith("Maven:"):
                 return "maven"
+            if project_id.startswith("Gradle:"):
+                return "gradle"
             if project_id.startswith("NPM:"):
                 return "npm"
             if project_id.startswith("PIP:"):
+                return "pip"
+            if project_id.startswith("Poetry:"):
                 return "pip"
 
     return "unknown"

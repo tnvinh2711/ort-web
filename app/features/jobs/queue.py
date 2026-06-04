@@ -12,10 +12,12 @@ from pathlib import Path
 from app.config import settings
 from app.models import Job, JobStatus
 from app.features.ort.installer import install_ort_local
+from app.features.ort.env_installer import install_environment
 from app.features.jobs.event_contract import EVENT_AI_REPORT, EVENT_LOG, EVENT_STATUS, make_event
 from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
 from app.features.ort.executor import OrtExecutionError, run_ort_command
+from app.features.ort.precheck import run_environment_precheck
 from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
 from app.features.analysis.component_inventory_csv import generate_component_inventory_csv
 from app.features.analysis.markdown_report import generate_markdown_report
@@ -111,6 +113,8 @@ def _extract_output_dir(command: str) -> Path | None:
     return None
 
 
+
+
 async def _log_info(job_id: str, log_file: Path, message: str) -> None:
     line = f"[info] {message}\n"
     with log_file.open("a", encoding="utf-8") as out:
@@ -132,6 +136,69 @@ async def _generate_markdown_report_for_job(
         await _log_info(job_id, log_file, f"Markdown report generation failed: {exc}")
 
 
+async def _heal_scancode_cache(job_id: str, log_file: Path) -> None:
+    """Detect and clear a corrupt or locked ScanCode license cache.
+
+    Two failure modes that cause 20+ minute hangs:
+    1. Corrupt cache (MemoryError on pickle.load) — ScanCode rebuilds the full
+       38k-license index on every file instead of loading once from disk.
+    2. Stale lock file — a previous run killed mid-build leaves a FileLock that
+       blocks any new run for up to 360 seconds per file, then raises LockTimeout.
+
+    Both are fixed by deleting the offending files before ORT invokes ScanCode.
+    ScanCode will rebuild the cache cleanly on the next run (~2 min, one-time).
+    """
+    import pickle as _pickle
+    import time as _time
+
+    if not shutil.which("scancode"):
+        return
+
+    try:
+        import importlib.util as _ilu
+        spec = _ilu.find_spec("licensedcode")
+        if not spec or not spec.origin:
+            return
+        cache_dir = Path(spec.origin).parent / "data" / "cache" / "license_index"
+    except Exception:
+        return
+
+    cache_file = cache_dir / "index_cache"
+    lock_file  = cache_dir / "index_cache.lock"
+
+    # 1. Remove stale lock (mtime > 10 min → almost certainly orphaned)
+    if lock_file.exists():
+        try:
+            age = _time.time() - lock_file.stat().st_mtime
+            if age > 600:
+                lock_file.unlink(missing_ok=True)
+                await _log_info(
+                    job_id, log_file,
+                    f"Removed stale ScanCode lock file (age {int(age)}s): {lock_file}"
+                )
+        except Exception:
+            pass
+
+    # 2. Validate cache integrity; delete if corrupt
+    if not cache_file.exists():
+        return
+
+    try:
+        with cache_file.open("rb") as f:
+            _pickle.load(f)
+    except Exception as exc:
+        await _log_info(
+            job_id, log_file,
+            f"ScanCode license cache corrupt ({type(exc).__name__}) — "
+            f"deleting to force rebuild (one-time ~2 min): {cache_file}"
+        )
+        try:
+            cache_file.unlink(missing_ok=True)
+            lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 async def _run_post_analyze_pipeline(
     job: Job, log_file: Path
 ) -> int:
@@ -150,11 +217,30 @@ async def _run_post_analyze_pipeline(
     scan_result = output_dir / "scan-result.yml"
     advisor_result = output_dir / "advisor-result.yml"
 
-    # Step 1: Scan (best-effort — requires an external scanner like ScanCode to be installed).
-    # ScanCode install: pip install scancode-toolkit
-    scancode_available = shutil.which("scancode") or shutil.which("scancode.exe")
+    # Step 1: Scan (license detection via ScanCode — OPTIONAL).
+    #
+    # ScanCode downloads and scans the full source tree of every dependency.
+    # For languages with large packages (C/C++, Java) this can take hours.
+    # The OSV vulnerability advisor only needs the analyzer-result, so scan
+    # is skipped by default.  Set ORT_WEB_ENABLE_SCAN=1 to enable it.
     scan_exit = 1
-    if scancode_available:
+    scan_enabled = os.environ.get("ORT_WEB_ENABLE_SCAN", "0").strip() == "1"
+    scancode_available = shutil.which("scancode") or shutil.which("scancode.exe")
+
+    if not scan_enabled:
+        await _log_info(
+            job_id, log_file,
+            "Scanner step skipped (set ORT_WEB_ENABLE_SCAN=1 to enable license scanning)."
+        )
+    elif not scancode_available:
+        await _log_info(
+            job_id, log_file,
+            "Scanner skipped: ScanCode not found in PATH. "
+            "Install with: pip install scancode-toolkit"
+        )
+    else:
+        # Guard against corrupt cache before invoking ORT.
+        await _heal_scancode_cache(job_id, log_file)
         scan_cmd = (
             f"ort -P ort.forceOverwrite=true scan "
             f"-i {shlex.quote(str(analyzer_result))} "
@@ -165,12 +251,6 @@ async def _run_post_analyze_pipeline(
         scan_exit = await run_ort_command(job_id, scan_cmd, job.work_dir, log_file)
         if scan_exit != 0:
             await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
-    else:
-        await _log_info(
-            job_id, log_file,
-            "Scanner skipped: ScanCode not found in PATH. "
-            "Install with: pip install scancode-toolkit"
-        )
 
     # Step 2: Advise
     advise_cmd = (
@@ -433,7 +513,65 @@ class JobQueue:
                 exit_code, ort_path = await install_ort_local(job.job_id, log_file, target_dir)
                 if ort_path:
                     job.ort_install_path = ort_path
+            elif job.command == "__install_env__" or job.command.startswith("__install_env__::"):
+                env_work_dir = job.work_dir
+                if job.command.startswith("__install_env__::"):
+                    raw_dir = job.command.split("::", 1)[1].strip()
+                    if raw_dir:
+                        env_work_dir = raw_dir
+                exit_code = await install_environment(job.job_id, env_work_dir, log_file)
             else:
+                try:
+                    _pre_tokens = shlex.split(job.command)
+                except Exception:
+                    _pre_tokens = []
+
+                # Pre-flight: verify ORT, Java, and relevant package managers are
+                # present before spending time in the queue only to fail immediately.
+                precheck_ok = await run_environment_precheck(
+                    job.job_id, job.work_dir, log_file, _pre_tokens
+                )
+                if not precheck_ok:
+                    raise OrtExecutionError(
+                        "Environment precheck failed: ORT or Java not found in PATH."
+                    )
+
+                # For analyze jobs, pre-install project dependencies so that
+                # package manager caches (npm cache, Maven local repo, etc.)
+                # are populated.  ORT will then resolve from cache instead of
+                # hitting the network, turning a multi-minute download into
+                # a few-second cache hit on every subsequent run.
+                if "analyze" in _pre_tokens:
+                    await _log_info(
+                        job.job_id, log_file,
+                        "Pre-installing project dependencies (cache warm-up)..."
+                    )
+                    await install_environment(job.job_id, job.work_dir, log_file)
+
+                    # Re-generate ort.properties now that env_installer may have
+                    # installed new tools (e.g. conan, maven, poetry).  ORT throws
+                    # an unhandled exception — crashing the whole job — when it
+                    # tries to invoke a package manager binary that does not exist,
+                    # so we must only enable tools actually present in PATH.
+                    if job.detected_language:
+                        from app.features.ort.properties import auto_generate_ort_properties
+                        updated = auto_generate_ort_properties(job.detected_language)
+                        await _log_info(
+                            job.job_id, log_file,
+                            f"ort.properties updated with available tools: {updated}"
+                        )
+
+                # ORT's DirectoryStash calls Files.move() on existing node_modules
+                # before running npm install.  On Windows this raises
+                # AccessDeniedException for large/deep directories.  Removing
+                # node_modules upfront means ORT skips the stash and does a
+                # fresh install from cache (~seconds) without crashing.
+                if "analyze" in _pre_tokens:
+                    _wd = Path(job.work_dir)
+                    for _nm in _wd.rglob("node_modules"):
+                        if _nm.is_dir() and "node_modules" not in _nm.relative_to(_wd).parent.parts:
+                            shutil.rmtree(_nm, ignore_errors=True)
+
                 exit_code = await run_ort_command(
                     job.job_id, job.command, job.work_dir, log_file,
                     on_process_start=register,

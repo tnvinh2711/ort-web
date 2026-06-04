@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- CVE-2024-21907: Newtonsoft.Json ReDoS -->
+    <PackageReference Include="Newtonsoft.Json" Version="10.0.1" />
+
+    <!-- CVE-2018-8292: System.Net.Http info disclosure -->
+    <PackageReference Include="System.Net.Http" Version="4.3.0" />
+
+    <!-- CVE-2021-26701: System.Text.Encodings.Web RCE -->
+    <PackageReference Include="System.Text.Encodings.Web" Version="4.5.0" />
+
+    <!-- CVE-2022-34716: System.Security.Cryptography.Pkcs info disclosure -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="6.0.0" />
+
+    <!-- CVE-2021-24112: System.Drawing.Common RCE on Linux/macOS -->
+    <PackageReference Include="System.Drawing.Common" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>

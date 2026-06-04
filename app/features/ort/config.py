@@ -240,6 +240,13 @@ def generate_config_yml(
             "analyzer": {
                 "allowDynamicVersions": True,
             },
+            # Restrict curation providers to local-only sources. The Spring
+            # provider makes outbound HTTP requests to repo.spring.io which
+            # can stall analysis indefinitely on restricted networks.
+            "packageCurationProviders": [
+                {"type": "DefaultDir"},
+                {"type": "DefaultFile"},
+            ],
         },
     }
 
@@ -264,27 +271,16 @@ def generate_repo_config(
 ) -> Path:
     """Generate a repository configuration file (.ort.yml format).
 
-    This file contains path excludes appropriate for the language.
-    It is passed to ORT via ``--repository-configuration-file``.
+    Path excludes are intentionally omitted: ORT 85+ crashes with an
+    IllegalArgumentException when path excludes are present but the analysed
+    directory is not a git repository (e.g. a downloaded archive). Each ORT
+    package manager already excludes its own build-output directories
+    internally (NPM skips node_modules, Maven skips target/, etc.), so these
+    excludes are not required for a correct analyse result.
 
     Returns the path where the file was written.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    excludes = _get_excludes_for_language(language)
-
-    repo_config: dict = {}
-    if excludes:
-        repo_config["excludes"] = {
-            "paths": [
-                {
-                    "pattern": e["pattern"],
-                    "reason": e["reason"],
-                    "comment": e["comment"],
-                }
-                for e in excludes
-            ],
-        }
 
     header = (
         "# ORT repository configuration\n"
@@ -292,6 +288,5 @@ def generate_repo_config(
         "\n"
     )
 
-    yaml_body = yaml.dump(repo_config, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    output_path.write_text(header + yaml_body, encoding="utf-8")
+    output_path.write_text(header + "{}\n", encoding="utf-8")
     return output_path

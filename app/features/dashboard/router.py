@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shlex
 import subprocess
@@ -19,16 +20,63 @@ from app.features.jobs.store import job_store
 from app.features.shared.language_detector import detect_language, get_language_options
 from app.features.ort.config import generate_config_yml, generate_repo_config, get_config_yml_path, read_config_yml
 from app.features.ort.properties import auto_generate_ort_properties, get_managers_for_language
+from app.features.ort.env_installer import detect_install_tasks
 from app.features.analysis.vuln_summary import get_vuln_summary
 from app.shared_templates import templates
 
 router = APIRouter()
 
-# Cache ORT detection. Detection itself is now a few exists() calls (no JVM
-# probe), but we still cache to keep page rendering snappy and avoid hammering
-# disk on every request.
+# ---------------------------------------------------------------------------
+# In-process caches
+# ---------------------------------------------------------------------------
+
+# ORT binary detection (expensive disk probe → cache 10 min)
 _ort_cache: dict = {"path": None, "at": 0.0, "valid": False}
-_ORT_CACHE_TTL = 600.0  # seconds
+_ORT_CACHE_TTL = 600.0
+
+# Dashboard data cache — skip expensive DB + FS queries for repeat loads.
+# Invalidated on any job mutation so counts stay accurate.
+_dashboard_cache: dict = {"data": None, "at": 0.0}
+_DASHBOARD_CACHE_TTL = 2.0
+
+
+def _invalidate_dashboard_cache() -> None:
+    _dashboard_cache["data"] = None
+
+
+# Patch job_store write methods to invalidate the dashboard cache so the
+# next page load always reflects the latest job state.
+_original_create = None
+_original_update = None
+_original_delete = None
+
+
+def _setup_store_hooks() -> None:
+    global _original_create, _original_update, _original_delete
+    from app.features.jobs.store import job_store as _store
+
+    if _original_create is not None:
+        return  # already patched
+
+    _original_create = _store.create_job
+    _original_update = _store.update_job
+    _original_delete = _store.delete_job
+
+    def _create(job):
+        _invalidate_dashboard_cache()
+        return _original_create(job)
+
+    def _update(job):
+        _invalidate_dashboard_cache()
+        return _original_update(job)
+
+    def _delete(job_id):
+        _invalidate_dashboard_cache()
+        return _original_delete(job_id)
+
+    _store.create_job = _create
+    _store.update_job = _update
+    _store.delete_job = _delete
 
 
 def _invalidate_ort_cache() -> None:
@@ -296,21 +344,26 @@ def _base_tpl(request: Request) -> str:
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    import asyncio
+    _setup_store_hooks()
     lang = _lang(request)
     notice_key = request.query_params.get("notice", "")
 
-    # Run blocking I/O concurrently to keep the event loop responsive.
-    jobs, ort_path, config_yml_content = await asyncio.gather(
-        asyncio.to_thread(job_store.list_jobs, 20),
-        asyncio.to_thread(_detect_ort_on_disk),
-        asyncio.to_thread(read_config_yml),
-    )
+    now = time.monotonic()
+    cached = _dashboard_cache["data"]
+    if cached is not None and (now - _dashboard_cache["at"]) < _DASHBOARD_CACHE_TTL:
+        jobs, ort_path, config_yml_content = cached
+    else:
+        jobs, ort_path, config_yml_content = await asyncio.gather(
+            asyncio.to_thread(job_store.list_jobs, 20),
+            asyncio.to_thread(_detect_ort_on_disk),
+            asyncio.to_thread(read_config_yml),
+        )
+        _dashboard_cache["data"] = (jobs, ort_path, config_yml_content)
+        _dashboard_cache["at"]   = now
 
-    # KPI stats
-    total_jobs = len(jobs)
+    total_jobs   = len(jobs)
     success_jobs = sum(1 for j in jobs if j.status.value == "success")
-    failed_jobs = sum(1 for j in jobs if j.status.value == "failed")
+    failed_jobs  = sum(1 for j in jobs if j.status.value == "failed")
 
     response = templates.TemplateResponse(
         request,
@@ -542,6 +595,82 @@ async def api_detect_language(request: Request) -> JSONResponse:
         return JSONResponse({"detected": detected, "recommended_managers": managers})
     except Exception as exc:
         return JSONResponse({"detected": None, "error": str(exc)}, status_code=400)
+
+
+@router.get("/debug/env-install", response_class=HTMLResponse)
+async def debug_env_install(request: Request) -> HTMLResponse:
+    lang = _lang(request)
+    return templates.TemplateResponse(
+        request,
+        "debug/env_install.html",
+        {"request": request, "lang": lang, "t": lambda key: translate(lang, key)},
+    )
+
+
+@router.post("/api/env-install/tasks")
+async def api_env_install_tasks(request: Request) -> JSONResponse:
+    """Detect install tasks for a project path (preview, no execution)."""
+    try:
+        body = await request.json()
+        project_path = body.get("project_path", "").strip()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    if not project_path:
+        return JSONResponse({"error": "project_path required"}, status_code=400)
+
+    from pathlib import Path as _Path
+    import shutil as _shutil
+
+    if not _Path(project_path).is_dir():
+        return JSONResponse({"error": f"Directory not found: {project_path}"}, status_code=400)
+
+    tasks = await asyncio.to_thread(detect_install_tasks, project_path)
+
+    result = []
+    for t in tasks:
+        tool_path = next((_shutil.which(c) for c in t["tool_cmds"] if _shutil.which(c)), None)
+        result.append({
+            "label": t["label"],
+            "tool_cmds": t["tool_cmds"],
+            "tool_found": tool_path,
+            "has_installer": t["install_tool"] is not None,
+            "optional": t["optional"],
+            "project_cmd": t["project_cmd"],
+        })
+
+    return JSONResponse({"tasks": result})
+
+
+@router.post("/jobs/install-env")
+async def install_env(request: Request) -> JSONResponse:
+    """Create an __install_env__ job for a project directory."""
+    try:
+        body = await request.json()
+        project_path = body.get("project_path", "").strip()
+        lang = body.get("lang", "vi")
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    if not project_path:
+        return JSONResponse({"error": "project_path required"}, status_code=400)
+
+    job_id = uuid4().hex
+    log_file = settings.logs_dir / f"{job_id}.log"
+
+    from pathlib import Path as _Path
+    job = Job(
+        job_id=job_id,
+        name=f"Env Install {_Path(project_path).name}",
+        command=f"__install_env__::{project_path}",
+        work_dir=project_path,
+        language=lang,
+        project_path=project_path,
+        created_at=Job.now_iso(),
+        log_file=str(log_file),
+    )
+    await job_queue.enqueue(job)
+    return JSONResponse({"job_id": job_id})
 
 
 @router.post("/jobs/analyze-project", response_class=RedirectResponse)

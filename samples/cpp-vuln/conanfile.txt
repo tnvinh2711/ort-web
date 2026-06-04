@@ -1,0 +1,19 @@
+[requires]
+# CVE-2022-4304, CVE-2023-0215, CVE-2023-0286 — timing attack, use-after-free
+# Fixed in 1.1.1t  |  CVSS 7.5
+openssl/1.1.1s
+
+# CVE-2022-27774, CVE-2022-22576 — credential leak on redirect, OAUTH2 token reuse
+# Fixed in 7.83.0  |  CVSS 8.8
+libcurl/7.80.0
+
+# CVE-2022-37434 — heap buffer overflow via malformed gzip stream
+# Fixed in 1.2.13  |  CVSS 9.8
+zlib/1.2.12
+
+# CVE-2022-25235, CVE-2022-25236, CVE-2022-25315 — XML namespace injection, integer overflow
+# Fixed in 2.4.5   |  CVSS 9.8
+expat/2.4.1
+
+[generators]
+cmake

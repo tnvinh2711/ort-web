@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Env Install Debug</title>
+  <script src="/static/vendor/htmx.min.js"></script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <script src="/static/js/app.js"></script>
+  <style>
+    body { padding: 0; margin: 0; }
+    .debug-wrap { max-width: 860px; margin: 32px auto; padding: 0 16px 80px; }
+    .debug-header { margin-bottom: 24px; }
+    .debug-header h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+    .debug-header p  { font-size: 13px; color: var(--muted); margin: 0; }
+
+    .path-row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 20px; }
+    .path-row input { flex: 1; }
+    .path-row button { white-space: nowrap; }
+
+    /* task table */
+    .task-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+    .task-table th { text-align: left; padding: 6px 10px; background: var(--line-light); font-weight: 600; font-size: 12px; color: var(--muted); }
+    .task-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-light); vertical-align: middle; }
+    .task-table tr:last-child td { border-bottom: none; }
+    .tag-ok   { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:#d1fae5; color:#065f46; }
+    .tag-miss { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:#fee2e2; color:#991b1b; }
+    .tag-auto { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:#dbeafe; color:#1e40af; }
+    .tag-opt  { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; background:var(--line-light); color:var(--muted); }
+
+    /* log console */
+    .log-wrap { display: none; }
+    .log-wrap.visible { display: block; }
+    .log-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .log-header h2 { font-size:14px; font-weight:700; margin:0; }
+    #log-status-badge { font-size:12px; }
+    #live-log {
+      background: #0d1117; color: #c9d1d9;
+      font-family: var(--font-mono, monospace); font-size: 12px;
+      padding: 12px 14px; border-radius: 6px;
+      height: 400px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .progress-bar { height: 3px; background: var(--line-light); border-radius:2px; overflow:hidden; margin-bottom:10px; }
+    .progress-bar-fill { height:100%; background: var(--primary-light); animation: indeterminate 1.5s infinite linear; transform-origin: 0 50%; }
+    @keyframes indeterminate { 0%{transform:translateX(-100%) scaleX(.5)} 100%{transform:translateX(200%) scaleX(.5)} }
+
+    .btn-row { display:flex; gap:8px; margin-top:12px; }
+    #run-btn { display:none; }
+  </style>
+</head>
+<body>
+<div class="debug-wrap">
+  <div class="debug-header">
+    <h1>Env Install — Debug</h1>
+    <p>Detect and install project dependencies before running ORT analysis.</p>
+  </div>
+
+  <!-- Project path input -->
+  <div class="card" style="padding:16px; margin-bottom:20px;">
+    <label style="font-size:13px; font-weight:600; display:block; margin-bottom:6px;">Project directory</label>
+    <div class="path-row">
+      <input id="project-path" type="text" class="mono" placeholder="/path/to/project" style="font-size:13px;" />
+      <button class="btn-secondary btn-sm" onclick="pickDir()">Browse</button>
+      <button class="btn-primary btn-sm" onclick="detectTasks()">Detect tasks</button>
+    </div>
+    <div id="detect-error" style="color:var(--danger); font-size:12px; margin-top:4px; display:none;"></div>
+  </div>
+
+  <!-- Detected tasks -->
+  <div id="tasks-section" style="display:none;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <h2 style="font-size:14px; font-weight:700; margin:0;">Detected install tasks</h2>
+      <button id="run-btn" class="btn-primary btn-sm" onclick="runInstall()">Install &amp; Run</button>
+    </div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="task-table" id="task-table">
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Tool</th>
+            <th>Status</th>
+            <th>Auto-install</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="task-tbody"></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="runInstall()" id="run-btn-bottom">Install &amp; Run</button>
+      <button class="btn-secondary" onclick="detectTasks()">Re-detect</button>
+    </div>
+  </div>
+
+  <!-- Live log -->
+  <div id="log-section" class="log-wrap" style="margin-top:20px;">
+    <div class="card" style="padding:16px;">
+      <div class="log-header">
+        <h2>Live log</h2>
+        <span id="log-status-badge" class="status-pill status-pill-running">
+          <span class="status-dot"></span><span id="log-status-text">running</span>
+        </span>
+      </div>
+      <div id="log-progress" class="progress-bar"><div class="progress-bar-fill"></div></div>
+      <pre id="live-log"></pre>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn-secondary btn-sm" onclick="copyLog()">Copy log</button>
+        <a id="log-full-link" href="#" target="_blank" class="btn-secondary btn-sm" style="display:none;">Open full job page</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _currentJobId = null;
+var _streamCleanup = null;
+
+function pickDir() {
+  fetch('/api/pick-directory')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.selected) {
+        document.getElementById('project-path').value = d.selected;
+        detectTasks();
+      }
+    }).catch(function(){});
+}
+
+function showError(msg) {
+  var el = document.getElementById('detect-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function detectTasks() {
+  var path = document.getElementById('project-path').value.trim();
+  if (!path) { showError('Enter a project path first.'); return; }
+  showError('');
+
+  fetch('/api/env-install/tasks', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_path: path}),
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.error) { showError(data.error); return; }
+    renderTasks(data.tasks || []);
+  })
+  .catch(function(e){ showError('Request failed: ' + e); });
+}
+
+function renderTasks(tasks) {
+  var tbody = document.getElementById('task-tbody');
+  var section = document.getElementById('tasks-section');
+  var runBtn = document.getElementById('run-btn');
+  var runBtnBottom = document.getElementById('run-btn-bottom');
+
+  tbody.innerHTML = '';
+
+  if (tasks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted); padding:16px; text-align:center;">No installable package managers detected in this project.</td></tr>';
+    runBtn.style.display = 'none';
+    runBtnBottom.style.display = 'none';
+  } else {
+    tasks.forEach(function(t) {
+      var toolCell = '<span class="mono" style="font-size:12px;">' + t.tool_cmds.join(' / ') + '</span>';
+
+      var statusCell;
+      if (t.tool_found) {
+        statusCell = '<span class="tag-ok">Found</span> <span class="mono" style="font-size:11px; color:var(--muted);">' + t.tool_found + '</span>';
+      } else {
+        statusCell = '<span class="tag-miss">Missing</span>';
+      }
+
+      var autoCell;
+      if (!t.tool_found) {
+        autoCell = t.has_installer
+          ? '<span class="tag-auto">Auto-install</span>'
+          : '<span class="tag-miss">Manual only</span>';
+      } else {
+        autoCell = '<span style="color:var(--muted); font-size:12px;">—</span>';
+      }
+
+      var optCell = t.optional ? '<span class="tag-opt">optional</span>' : '';
+
+      var row = document.createElement('tr');
+      row.innerHTML =
+        '<td><strong>' + escHtml(t.label) + '</strong></td>' +
+        '<td>' + toolCell + '</td>' +
+        '<td>' + statusCell + '</td>' +
+        '<td>' + autoCell + '</td>' +
+        '<td>' + optCell + '</td>';
+      tbody.appendChild(row);
+    });
+    runBtn.style.display = 'inline-block';
+    runBtnBottom.style.display = 'inline-block';
+  }
+
+  section.style.display = 'block';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function runInstall() {
+  var path = document.getElementById('project-path').value.trim();
+  if (!path) { showError('Enter a project path first.'); return; }
+
+  // Stop any previous stream
+  if (_streamCleanup) { _streamCleanup(); _streamCleanup = null; }
+
+  // Reset log UI
+  var logSection = document.getElementById('log-section');
+  var logEl = document.getElementById('live-log');
+  var progress = document.getElementById('log-progress');
+  var badge = document.getElementById('log-status-badge');
+  var statusText = document.getElementById('log-status-text');
+  logEl.textContent = '';
+  logSection.classList.add('visible');
+  logSection.scrollIntoView({behavior:'smooth', block:'start'});
+  progress.style.display = 'block';
+  badge.className = 'status-pill status-pill-running';
+  statusText.textContent = 'running';
+
+  fetch('/jobs/install-env', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_path: path, lang: '{{ lang }}'}),
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.error) { showError(data.error); return; }
+
+    var jobId = data.job_id;
+    _currentJobId = jobId;
+
+    var fullLink = document.getElementById('log-full-link');
+    fullLink.href = '/jobs/' + jobId;
+    fullLink.style.display = 'inline-block';
+
+    // Attach SSE stream using existing ORTRealtime
+    if (!window.ORTRealtime) {
+      logEl.textContent += '[error] ORTRealtime not loaded — falling back to polling\n';
+      _pollFallback(jobId);
+      return;
+    }
+
+    window.ORTRealtime.attachJobStream({
+      jobId: jobId,
+      onLog: function(d) {
+        if (d.line) {
+          logEl.textContent += d.line;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      },
+      onStatus: function(d) {
+        var st = d.status || '';
+        badge.className = 'status-pill status-pill-' + st;
+        statusText.textContent = st;
+        if (st === 'success' || st === 'failed' || st === 'cancelled') {
+          progress.style.display = 'none';
+          window.ORTRealtime.detachJobStream(jobId);
+        }
+      },
+      onError: function() {
+        _pollFallback(jobId);
+      },
+    });
+
+    _streamCleanup = function() {
+      window.ORTRealtime.detachJobStream(jobId);
+    };
+  })
+  .catch(function(e) { showError('Failed to start job: ' + e); });
+}
+
+function _pollFallback(jobId) {
+  var badge = document.getElementById('log-status-badge');
+  var statusText = document.getElementById('log-status-text');
+  var progress = document.getElementById('log-progress');
+  var logEl = document.getElementById('live-log');
+
+  var iv = setInterval(function() {
+    // Poll full log text (replace content each tick)
+    fetch('/jobs/' + jobId + '/log-text')
+      .then(function(r){ return r.text(); })
+      .then(function(t){ logEl.textContent = t; logEl.scrollTop = logEl.scrollHeight; })
+      .catch(function(){});
+
+    // Poll status
+    fetch('/jobs/' + jobId + '/api/status')
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        var st = d.status || '';
+        badge.className = 'status-pill status-pill-' + st;
+        statusText.textContent = st;
+        if (st === 'success' || st === 'failed' || st === 'cancelled') {
+          clearInterval(iv);
+          progress.style.display = 'none';
+        }
+      }).catch(function(){});
+  }, 2000);
+
+  _streamCleanup = function() { clearInterval(iv); };
+}
+
+function copyLog() {
+  var text = document.getElementById('live-log').textContent;
+  navigator.clipboard.writeText(text).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+</script>
+</body>
+</html>

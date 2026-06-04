@@ -137,11 +137,33 @@ def get_managers_for_language(language: str) -> list[str]:
     return [pm["ort_name"] for pm in PACKAGE_MANAGERS if pm["category"] in categories]
 
 
+def get_available_managers_for_language(language: str) -> list[str]:
+    """Return only the ORT package manager names for *language* whose CLI tools
+    are actually present in PATH.
+
+    ORT throws an unhandled exception (and kills the job) when it tries to
+    invoke a package manager binary that does not exist.  Filtering here ensures
+    ort.properties only lists tools ORT can actually call.
+    """
+    all_managers = get_managers_for_language(language)
+    pm_by_name = {pm["ort_name"]: pm for pm in PACKAGE_MANAGERS}
+    available = []
+    for ort_name in all_managers:
+        pm = pm_by_name.get(ort_name)
+        if pm and any(shutil.which(cmd) for cmd in pm["detect_commands"]):
+            available.append(ort_name)
+    return available
+
+
 def auto_generate_ort_properties(
     language: str, custom_paths: Optional[dict[str, str]] = None
 ) -> Path:
-    """Auto-generate ``ort.properties`` with package managers for *language*."""
-    managers = get_managers_for_language(language)
+    """Auto-generate ``ort.properties`` with package managers for *language*.
+
+    Only managers whose CLI tools are present in PATH are enabled — ORT crashes
+    with an unhandled exception if it encounters a missing tool.
+    """
+    managers = get_available_managers_for_language(language)
     return write_ort_properties(managers, custom_paths)
 
 

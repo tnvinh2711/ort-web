@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "python-vuln-poetry"
+version = "0.1.0"
+description = "Python Poetry sample with known vulnerable dependencies"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+# CVE-2023-43804 — urllib3 cookie header leakage
+urllib3 = "1.26.4"
+
+# CVE-2022-40897 — setuptools ReDoS
+setuptools = "57.0.0"
+
+# CVE-2021-43818 — lxml HTML cleaner XSS bypass
+lxml = "4.6.3"
+
+# CVE-2022-42966 — orjson crash via crafted input
+orjson = "3.6.0"
+
+# CVE-2023-37276 — aiohttp HTTP request smuggling
+aiohttp = "3.8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

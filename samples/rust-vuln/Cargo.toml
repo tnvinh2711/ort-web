@@ -1,0 +1,23 @@
+[package]
+name = "rust-vuln-sample"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# CVE-2021-28117 — libgit2 multiple memory safety issues
+git2 = "0.13.0"
+
+# CVE-2022-21658 — race condition allows privilege escalation
+remove_dir_all = "0.5.2"
+
+# CVE-2021-45710 — tokio data race in runtime
+tokio = { version = "1.8.0", features = ["full"] }
+
+# CVE-2020-26235 — panic on invalid time (segfault on some platforms)
+time = "0.1.42"
+
+# CVE-2021-45688 — type confusion leads to UB
+smallvec = "1.6.0"
+
+# GHSA-8vxc-r5wp-vgvc — stack overflow in regex
+regex = "1.3.0"

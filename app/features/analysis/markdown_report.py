@@ -62,11 +62,17 @@ def _walk(node: Any):
 def _parse_package_id(package_id: str) -> tuple[str, str, str]:
     parts = str(package_id or "").split(":")
     if len(parts) >= 4:
+        pkg_type = parts[0]
         namespace = parts[1]
         name = parts[2]
         version = parts[3]
-        package_name = f"{namespace}:{name}" if namespace else name
-        return package_name, version, parts[0]
+        if namespace:
+            # NPM scoped packages use @scope/name format (e.g. NPM:@babel:core → @babel/core)
+            sep = "/" if (pkg_type == "NPM" and namespace.startswith("@")) else ":"
+            package_name = f"{namespace}{sep}{name}"
+        else:
+            package_name = name
+        return package_name, version, pkg_type
     return str(package_id or ""), "", ""
 
 

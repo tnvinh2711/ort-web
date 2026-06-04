@@ -1,0 +1,31 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+application {
+    mainClass = 'com.example.App'
+}
+
+dependencies {
+    // CVE-2021-44228 (Log4Shell) CVSS 10.0 - CRITICAL
+    implementation 'org.apache.logging.log4j:log4j-core:2.14.1'
+    implementation 'org.apache.logging.log4j:log4j-api:2.14.1'
+
+    // CVE-2022-22965 (Spring4Shell) CVSS 9.8 - CRITICAL
+    implementation 'org.springframework:spring-webmvc:5.3.17'
+    implementation 'org.springframework:spring-core:5.3.17'
+
+    // CVE-2021-26291 CVSS 9.1 - arbitrary HTTP requests
+    implementation 'org.apache.maven:maven-core:3.8.1'
+
+    // CVE-2020-13956 CVSS 5.3
+    implementation 'org.apache.httpcomponents:httpclient:4.5.12'
+}

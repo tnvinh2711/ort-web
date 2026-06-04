@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 from app.config import settings
@@ -10,14 +11,32 @@ from app.models import Job, JobStatus
 class JobStore:
     def __init__(self, db_path: Path):
         self._db_path = db_path
+        self._local = threading.local()
 
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self._db_path, timeout=10)
-        con.row_factory = sqlite3.Row
-        con.execute("pragma journal_mode=wal")
-        con.execute("pragma synchronous=normal")
-        con.execute("pragma temp_store=memory")
-        con.execute("pragma mmap_size=67108864")
+        """Return a persistent per-thread SQLite connection.
+
+        Opening a new connection on every query was the dominant latency source:
+        it re-ran all PRAGMAs and paid OS open() overhead on each call.
+        WAL mode allows unlimited concurrent readers so reusing a connection
+        per thread is safe.
+        """
+        con: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if con is None:
+            con = sqlite3.connect(
+                self._db_path,
+                check_same_thread=False,
+                timeout=10,
+            )
+            con.row_factory = sqlite3.Row
+            # Set once per connection — not repeated on every query.
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA synchronous=NORMAL")
+            con.execute("PRAGMA temp_store=MEMORY")
+            con.execute("PRAGMA mmap_size=134217728")   # 128 MB
+            con.execute("PRAGMA cache_size=-65536")     # 64 MB page cache
+            con.execute("PRAGMA busy_timeout=5000")     # wait up to 5 s on lock
+            self._local.conn = con
         return con
 
     def initialize(self) -> None:

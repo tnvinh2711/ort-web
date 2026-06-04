@@ -24,6 +24,10 @@ class Settings:
     )
     jobs_db_file: str = "jobs.sqlite3"
     max_parallel_jobs: int = 2
+    # Maximum seconds a single ORT subprocess may run before it is killed.
+    # npm install for large projects can run 10-20 min; default gives headroom.
+    # Override with ORT_WEB_JOB_TIMEOUT env var.
+    ort_job_timeout_seconds: int = int(os.environ.get("ORT_WEB_JOB_TIMEOUT", "1800"))
 
     @property
     def jobs_db_path(self) -> Path:
@@ -44,6 +48,15 @@ class Settings:
     @property
     def bin_dir(self) -> Path:
         return self.runtime_dir / "bin"
+
+    @property
+    def npm_cache_dir(self) -> Path:
+        """Shared npm cache used by both env_installer and ORT executor.
+
+        Returns an *absolute* path so NPM_CONFIG_CACHE is resolved correctly
+        regardless of the working directory npm/ORT is invoked from.
+        """
+        return (self.runtime_dir / ".npm-cache").resolve()
 
     @property
     def ort_config_dir(self) -> Path:
@@ -75,6 +88,7 @@ def ensure_runtime_dirs(settings: Settings) -> None:
     settings.bin_dir.mkdir(parents=True, exist_ok=True)
     settings.markdown_reports_dir.mkdir(parents=True, exist_ok=True)
     settings.ort_config_dir.mkdir(parents=True, exist_ok=True)
+    settings.npm_cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

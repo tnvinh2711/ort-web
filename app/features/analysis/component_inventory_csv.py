@@ -41,9 +41,13 @@ def _parse_package_id(package_id: str) -> tuple[str, str]:
     parts = raw.split(":")
     if len(parts) >= 4:
         # parts[0]=Type, parts[1]=namespace, parts[2]=name, parts[3]=version
+        namespace = parts[1].strip()
         name = parts[2].strip()
         version = parts[3].strip()
         if name:
+            # NPM scoped packages: @scope/name (e.g. NPM:@babel:core → @babel/core)
+            if namespace.startswith("@"):
+                return f"{namespace}/{name}", version
             return name, version
 
     # NPM @scope/pkg@version or plain pkg@version

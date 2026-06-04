@@ -23,7 +23,7 @@ _DETECT_EARLY_LEAD = 10        # leader must have >= this multiple of #2 to stop
 LANGUAGE_PATTERNS = {
     "python": {".py", ".pyx", ".pyi"},
     "java": {".java", ".gradle", ".gradle.kts"},
-    "kotlin": {".kt", ".kts"},
+    "kotlin": {".kt", ".kts", "build.gradle.kts"},
     "go": {".go", "go.mod", "go.sum"},
     "rust": {".rs", "Cargo.toml", "Cargo.lock"},
     "csharp": {".cs", ".csproj", ".sln"},
@@ -35,7 +35,6 @@ LANGUAGE_PATTERNS = {
     "ruby": {".rb", "Gemfile", "Rakefile"},
     "php": {".php", "composer.json"},
     "swift": {".swift", "Package.swift"},
-    "kotlin": {".kt", "build.gradle.kts"},
     "gradle": {"build.gradle", "build.gradle.kts", "gradle.properties"},
     "maven": {"pom.xml"},
     "npm": {"package.json"},
