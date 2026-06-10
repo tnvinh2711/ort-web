@@ -49,6 +49,30 @@ class Settings:
     def bin_dir(self) -> Path:
         return self.runtime_dir / "bin"
 
+    # Scanners that Trivy runs in `trivy fs`. Override with ORT_WEB_TRIVY_SCANNERS
+    # (comma-separated, e.g. "vuln" or "vuln,secret,misconfig").
+    trivy_scanners: str = os.environ.get("ORT_WEB_TRIVY_SCANNERS", "vuln,secret,misconfig")
+    # Severity filter passed to Trivy. Empty string = report all severities.
+    trivy_severity: str = os.environ.get("ORT_WEB_TRIVY_SEVERITY", "HIGH,CRITICAL")
+    # Offline mode (default ON): add --offline-scan --skip-db-update
+    # --skip-check-update so Trivy never touches the network and relies entirely
+    # on the cache dir's pre-populated DB. Disable with ORT_WEB_TRIVY_OFFLINE=0
+    # to let Trivy download/refresh its DB online.
+    trivy_offline: bool = os.environ.get("ORT_WEB_TRIVY_OFFLINE", "1").strip() == "1"
+
+    @property
+    def trivy_cache_dir(self) -> Path:
+        """Trivy cache dir holding the vulnerability DB (db/trivy.db + metadata).
+
+        Defaults to ``~/Trivy`` (the pre-populated offline DB location). Override
+        with ORT_WEB_TRIVY_CACHE_DIR. Absolute so it resolves regardless of the
+        directory Trivy is invoked from.
+        """
+        override = os.environ.get("ORT_WEB_TRIVY_CACHE_DIR")
+        if override:
+            return Path(override).resolve()
+        return (Path.home() / "Trivy").resolve()
+
     @property
     def npm_cache_dir(self) -> Path:
         """Shared npm cache used by both env_installer and ORT executor.
@@ -89,6 +113,7 @@ def ensure_runtime_dirs(settings: Settings) -> None:
     settings.markdown_reports_dir.mkdir(parents=True, exist_ok=True)
     settings.ort_config_dir.mkdir(parents=True, exist_ok=True)
     settings.npm_cache_dir.mkdir(parents=True, exist_ok=True)
+    settings.trivy_cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

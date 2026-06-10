@@ -1,78 +1,54 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="hero">
-  <h1>Grok API Setup</h1>
-  <p>Configure xAI credentials for AI vulnerability suggestion reports.</p>
+  <h1>Environment Setup</h1>
+  <p>Choose the scanner engine used when you analyze a project.</p>
 </section>
 
 <section class="panel">
-  <h2>Grok (xAI)</h2>
-  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">Only AI settings are configured here. ORT/tool configuration is handled automatically during analysis.</p>
-  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
-    <label>
-      <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Model</span>
-      <input id="vertexModel" type="text" value="{{ vertex_model }}" placeholder="grok-4.20-reasoning" />
+  <h2>Scanner Engine</h2>
+  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">
+    Choose which engine runs when you analyze a project. The two are mutually exclusive —
+    selecting one skips the other entirely.
+  </p>
+  <div style="display:flex; flex-direction:column; gap:10px;">
+    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+      <input type="radio" name="scannerEngine" value="trivy"
+             {% if scanner_engine == 'trivy' %}checked{% endif %} onchange="saveScannerEngine('trivy')" />
+      <span>
+        <strong>Trivy</strong> <span style="color:var(--muted); font-size:12px;">(default)</span><br />
+        <span style="color:var(--muted); font-size:12px;">Fast scan for vulnerabilities, secrets, and misconfigurations. Auto-installs if missing.</span>
+      </span>
     </label>
-    <label style="grid-column:1 / -1;">
-      <span style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">API Key</span>
-      <input id="vertexApiKey" type="password" placeholder="xai-..." />
-      {% if vertex_api_key_masked %}
-      <span style="display:block; margin-top:6px; font-size:12px; color:var(--muted);">Current: {{ vertex_api_key_masked }}</span>
-      {% endif %}
+    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+      <input type="radio" name="scannerEngine" value="ort"
+             {% if scanner_engine == 'ort' %}checked{% endif %} onchange="saveScannerEngine('ort')" />
+      <span>
+        <strong>ORT</strong><br />
+        <span style="color:var(--muted); font-size:12px;">Full ORT pipeline (analyze → advise → report) with SBOM and license data.</span>
+      </span>
     </label>
   </div>
-  <div style="display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap;">
-    <button type="button" class="btn-primary" id="saveVertexBtn" onclick="saveVertexConfig()">Save Grok Config</button>
-    <span id="vertexStatus" style="font-size:13px;"></span>
+  <div style="margin-top:12px;">
+    <span id="scannerStatus" style="font-size:13px;"></span>
   </div>
 </section>
 
 <script>
-async function loadVertexConfig() {
-  try {
-    var res = await fetch('/setup/api/vertex-config');
-    var data = await res.json();
-    if (data.model) document.getElementById('vertexModel').value = data.model;
-    var statusEl = document.getElementById('vertexStatus');
-    if (statusEl && data.configured) {
-      statusEl.textContent = 'Configured (' + (data.api_key_masked || '') + ')';
-      statusEl.style.color = 'var(--success)';
-    }
-  } catch (_) {
-    // Ignore load errors so setup page can still be used.
-  }
-}
-
-async function saveVertexConfig() {
-  var btn = document.getElementById('saveVertexBtn');
-  var statusEl = document.getElementById('vertexStatus');
-  var apiKey = document.getElementById('vertexApiKey').value.trim();
-  var model = document.getElementById('vertexModel').value.trim() || 'grok-4.20-reasoning';
-
-  if (!apiKey) {
-    statusEl.textContent = 'API key is required.';
-    statusEl.style.color = 'var(--danger)';
-    return;
-  }
-
-  btn.disabled = true;
+async function saveScannerEngine(engine) {
+  var statusEl = document.getElementById('scannerStatus');
   statusEl.textContent = 'Saving...';
   statusEl.style.color = 'var(--muted)';
-
   try {
-    var res = await fetch('/setup/api/vertex-config', {
+    var res = await fetch('/setup/api/scanner-engine', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: apiKey,
-        model: model,
-      }),
+      body: JSON.stringify({ engine: engine }),
     });
     var data = await res.json();
     if (data.success) {
-      statusEl.textContent = 'Saved: ' + (data.api_key_masked || 'configured');
+      statusEl.textContent = 'Engine set to ' + data.engine.toUpperCase() + '. Reload the dashboard to apply.';
       statusEl.style.color = 'var(--success)';
-      document.getElementById('vertexApiKey').value = '';
     } else {
       statusEl.textContent = 'Save failed: ' + (data.error || 'unknown error');
       statusEl.style.color = 'var(--danger)';
@@ -80,11 +56,7 @@ async function saveVertexConfig() {
   } catch (e) {
     statusEl.textContent = 'Save failed: ' + e.message;
     statusEl.style.color = 'var(--danger)';
-  } finally {
-    btn.disabled = false;
   }
 }
-
-loadVertexConfig();
 </script>
 {% endblock %}

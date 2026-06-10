@@ -18,6 +18,7 @@ from app.features.jobs.store import job_store
 from app.features.jobs.log_stream import log_stream_hub
 from app.features.ort.executor import OrtExecutionError, run_ort_command
 from app.features.ort.precheck import run_environment_precheck
+from app.features.trivy.scanner import run_trivy_scan
 from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
 from app.features.analysis.component_inventory_csv import generate_component_inventory_csv
 from app.features.analysis.markdown_report import generate_markdown_report
@@ -520,6 +521,17 @@ class JobQueue:
                     if raw_dir:
                         env_work_dir = raw_dir
                 exit_code = await install_environment(job.job_id, env_work_dir, log_file)
+            elif job.command == "__trivy_scan__" or job.command.startswith("__trivy_scan__::"):
+                target = job.work_dir
+                if job.command.startswith("__trivy_scan__::"):
+                    raw_target = job.command.split("::", 1)[1].strip()
+                    if raw_target:
+                        target = raw_target
+                trivy_out_dir = (settings.artifacts_dir / job.job_id).resolve()
+                exit_code = await run_trivy_scan(
+                    job.job_id, target, trivy_out_dir, log_file,
+                    on_process_start=register,
+                )
             else:
                 try:
                     _pre_tokens = shlex.split(job.command)
