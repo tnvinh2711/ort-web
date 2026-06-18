@@ -14,8 +14,8 @@
 <!-- KPI Stats Row -->
 <div class="stat-row">
   <div class="stat-card {% if scanner_ready %}stat-success{% else %}stat-danger{% endif %}">
-    <div class="stat-label">{{ scanner_label }} Status</div>
-    <div class="stat-value">{% if scanner_ready %}Active{% else %}N/A{% endif %}</div>
+    <div class="stat-label">{{ t('dashboard.scanner_status') }}</div>
+    <div class="stat-value">{% if scanner_ready %}{{ t('dashboard.engine_active') }}{% else %}{{ t('dashboard.engine_na') }}{% endif %}</div>
   </div>
   <div class="stat-card stat-info">
     <div class="stat-label">{{ t('dashboard.recent_jobs') }}</div>
@@ -34,7 +34,7 @@
 <!-- Scanner Status Section -->
 <section class="panel">
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-    <h2 style="margin:0;">{{ scanner_label }} Status</h2>
+    <h2 style="margin:0;">{{ scanner_label }}</h2>
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       {% if scanner_ready %}
         <span class="status-pill status-pill-success"><span class="status-dot"></span>{{ t('dashboard.ort_installed') }}</span>
@@ -47,7 +47,7 @@
   {% if ort_path %}
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">
       <code>{{ ort_path }}</code><br/>
-      Analyze runs ORT + Trivy together. Trivy auto-installs on first scan.
+      {{ t('dashboard.engines_note') }}
     </p>
   {% else %}
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">{{ t('dashboard.ort_install_prompt') }}</p>
@@ -55,7 +55,7 @@
       <input type="hidden" name="language" value="{{ lang }}" />
       <div class="row-input">
         <input id="installDir" name="install_dir" placeholder="{{ t('dashboard.install_dir_placeholder') }}" style="flex:1;" />
-        <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">Folder</button>
+        <button type="button" onclick="pickInstallDirectory()" class="btn-secondary">{{ t('dashboard.pick_folder_btn') }}</button>
         <button type="submit" class="btn-primary" id="installBtn">{{ t('dashboard.install_ort_btn') }}</button>
       </div>
     </form>
@@ -73,7 +73,7 @@
       </div>
       <!-- Log area shown on failure -->
       <div id="install-log-area" style="display:none; margin-top:12px;">
-        <div style="font-size:12px; font-weight:600; margin-bottom:4px; color:var(--danger);">Log cài đặt:</div>
+        <div style="font-size:12px; font-weight:600; margin-bottom:4px; color:var(--danger);">{{ t('dashboard.install_log_label') }}</div>
         <pre id="install-log-text" class="log-console" style="border-radius:6px;padding:10px;font-size:11px;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></pre>
       </div>
     </div>

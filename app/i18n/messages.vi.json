@@ -71,9 +71,7 @@
   "status.success": "Thành công",
   "status.failed": "Thất bại",
   "status.cancelled": "Đã huỷ",
-
   "nav.setup": "Cài đặt môi trường",
-
   "setup.title": "Cài đặt môi trường",
   "setup.subtitle": "Phát hiện các công cụ ngôn ngữ đã cài đặt và cấu hình package manager cho ORT.",
   "setup.detect_title": "Package Manager đã cài đặt",
@@ -92,7 +90,6 @@
   "setup.apply_error": "Áp dụng thất bại",
   "setup.props_preview_title": "Nội dung ort.properties hiện tại",
   "setup.props_empty": "(file chưa tồn tại — nhấn Áp dụng để tạo mới)",
-
   "setup.auto_select_title": "Tự động chọn theo ngôn ngữ",
   "setup.auto_select_help": "Chọn ngôn ngữ dự án để tự động bật các package manager phù hợp.",
   "setup.auto_select_btn": "Tự động chọn",
@@ -103,7 +100,6 @@
   "setup.generate_config_btn": "Tạo config cho ngôn ngữ",
   "setup.config_generated": "Đã tạo config cho",
   "setup.config_generate_error": "Không thể tạo config",
-
   "dashboard.config_status": "Trạng thái cấu hình",
   "dashboard.config_ready": "Config sẵn sàng cho",
   "dashboard.config_not_ready": "Config sẽ được tự động tạo khi chạy Phân tích",
@@ -142,5 +138,10 @@
   "job.run_advisor_btn": "Chạy Advisor (OSV)",
   "job.run_advisor_running": "Đang chạy Advisor...",
   "job.run_advisor_no_result": "Không tìm thấy analyzer-result.yml. Hãy chạy Analyze trước.",
-  "job.run_advisor_error": "Không thể khởi động job Advisor."
+  "job.run_advisor_error": "Không thể khởi động job Advisor.",
+  "dashboard.scanner_status": "Trạng thái Scanner",
+  "dashboard.engine_active": "Hoạt động",
+  "dashboard.engine_na": "Không có",
+  "dashboard.engines_note": "Khi phân tích sẽ chạy đồng thời ORT + Trivy. Trivy tự động cài đặt ở lần quét đầu tiên.",
+  "dashboard.install_log_label": "Log cài đặt:"
 }

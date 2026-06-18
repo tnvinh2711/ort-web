@@ -71,9 +71,7 @@
   "status.success": "Success",
   "status.failed": "Failed",
   "status.cancelled": "Cancelled",
-
   "nav.setup": "Environment Setup",
-
   "setup.title": "Environment Setup",
   "setup.subtitle": "Detect installed language tools and configure which package managers ORT will use.",
   "setup.detect_title": "Installed Package Managers",
@@ -92,7 +90,6 @@
   "setup.apply_error": "Failed to apply",
   "setup.props_preview_title": "Current ort.properties",
   "setup.props_empty": "(file does not exist yet — click Apply to create it)",
-
   "setup.auto_select_title": "Auto-select by language",
   "setup.auto_select_help": "Select a project language to automatically enable the relevant package managers.",
   "setup.auto_select_btn": "Auto-select",
@@ -103,7 +100,6 @@
   "setup.generate_config_btn": "Generate config for language",
   "setup.config_generated": "Config generated for",
   "setup.config_generate_error": "Failed to generate config",
-
   "dashboard.config_status": "Configuration Status",
   "dashboard.config_ready": "Config ready for",
   "dashboard.config_not_ready": "Config will be auto-generated on Analyze",
@@ -142,5 +138,10 @@
   "job.run_advisor_btn": "Run Advisor (OSV)",
   "job.run_advisor_running": "Running Advisor...",
   "job.run_advisor_no_result": "analyzer-result.yml not found. Run Analyze first.",
-  "job.run_advisor_error": "Failed to start Advisor job."
+  "job.run_advisor_error": "Failed to start Advisor job.",
+  "dashboard.scanner_status": "Scanner Status",
+  "dashboard.engine_active": "Active",
+  "dashboard.engine_na": "N/A",
+  "dashboard.engines_note": "Analyze runs ORT + Trivy together. Trivy auto-installs on first scan.",
+  "dashboard.install_log_label": "Install log:"
 }
