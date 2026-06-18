@@ -37,21 +37,18 @@
     <h2 style="margin:0;">{{ scanner_label }} Status</h2>
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       {% if scanner_ready %}
-        <span class="status-pill status-pill-success"><span class="status-dot"></span>{% if scanner_engine == 'trivy' %}Ready{% else %}{{ t('dashboard.ort_installed') }}{% endif %}</span>
+        <span class="status-pill status-pill-success"><span class="status-dot"></span>{{ t('dashboard.ort_installed') }}</span>
       {% else %}
         <span class="status-pill status-pill-failed"><span class="status-dot"></span>{{ t('dashboard.ort_not_installed') }}</span>
       {% endif %}
     </div>
   </div>
 
-  {% if scanner_engine == 'trivy' %}
+  {% if ort_path %}
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">
-      Trivy scans for vulnerabilities, secrets, and misconfigurations using the local DB.
-      It auto-installs on first scan. Change the engine in
-      <a href="/setup?lang={{ lang }}">Setup</a>.
+      <code>{{ ort_path }}</code><br/>
+      Analyze runs ORT + Trivy together. Trivy auto-installs on first scan.
     </p>
-  {% elif ort_path %}
-    <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);"><code>{{ ort_path }}</code></p>
   {% else %}
     <p style="margin:8px 0 0; font-size:13px; color:var(--secondary);">{{ t('dashboard.ort_install_prompt') }}</p>
     <form id="installForm" onsubmit="return submitInstall(event);" style="margin-top:12px;">
@@ -123,7 +120,6 @@
         <span id="recommendedManagersList"></span>
       </div>
 
-      {% if scanner_engine != 'trivy' %}
       <div style="padding:10px 14px; background:var(--line-light); border-radius:var(--radius); font-size:12px; color:var(--secondary); margin-top:8px;">
         {% if config_yml_content %}
           <span style="color:var(--success);">{{ t('dashboard.config_ready') }}: <code>{{ config_yml_path }}</code></span>
@@ -132,7 +128,6 @@
         {% endif %}
         <br/>{{ t('dashboard.auto_config_note') }}
       </div>
-      {% endif %}
     </div>
   </form>
 </section>

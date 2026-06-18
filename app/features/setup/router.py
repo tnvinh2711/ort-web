@@ -6,7 +6,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.i18n import translate
 from app.features.setup.vertex_config_store import get_vertex_config, mask_secret, save_vertex_config
-from app.features.setup.scanner_config_store import get_scanner_engine, set_scanner_engine
 from app.shared_templates import templates
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -34,26 +33,10 @@ def setup_page(request: Request) -> HTMLResponse:
             "vertex_configured": vertex.enabled,
             "vertex_model": vertex.model,
             "vertex_api_key_masked": mask_secret(vertex.api_key),
-            "scanner_engine": get_scanner_engine(),
         },
     )
     response.set_cookie("lang", lang)
     return response
-
-
-@router.get("/api/scanner-engine")
-async def api_get_scanner_engine() -> JSONResponse:
-    return JSONResponse({"engine": get_scanner_engine()})
-
-
-@router.post("/api/scanner-engine")
-async def api_save_scanner_engine(request: Request) -> JSONResponse:
-    try:
-        body = await request.json()
-        engine = set_scanner_engine(str(body.get("engine", "")))
-        return JSONResponse({"success": True, "engine": engine})
-    except Exception as exc:
-        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @router.get("/api/vertex-config")

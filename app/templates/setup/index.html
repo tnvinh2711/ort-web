@@ -6,57 +6,24 @@
 </section>
 
 <section class="panel">
-  <h2>Scanner Engine</h2>
+  <h2>Scanner Engines</h2>
   <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">
-    Choose which engine runs when you analyze a project. The two are mutually exclusive —
-    selecting one skips the other entirely.
+    Analyzing a project runs <strong>both</strong> engines together — results from each
+    appear side by side in the same job.
   </p>
   <div style="display:flex; flex-direction:column; gap:10px;">
-    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
-      <input type="radio" name="scannerEngine" value="trivy"
-             {% if scanner_engine == 'trivy' %}checked{% endif %} onchange="saveScannerEngine('trivy')" />
-      <span>
-        <strong>Trivy</strong> <span style="color:var(--muted); font-size:12px;">(default)</span><br />
-        <span style="color:var(--muted); font-size:12px;">Fast scan for vulnerabilities, secrets, and misconfigurations. Auto-installs if missing.</span>
-      </span>
-    </label>
-    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
-      <input type="radio" name="scannerEngine" value="ort"
-             {% if scanner_engine == 'ort' %}checked{% endif %} onchange="saveScannerEngine('ort')" />
+    <div style="display:flex; align-items:flex-start; gap:8px;">
       <span>
         <strong>ORT</strong><br />
-        <span style="color:var(--muted); font-size:12px;">Full ORT pipeline (analyze → advise → report) with SBOM and license data.</span>
+        <span style="color:var(--muted); font-size:12px;">Full ORT pipeline (analyze → advise → report) with SBOM and license data. Install from the dashboard.</span>
       </span>
-    </label>
-  </div>
-  <div style="margin-top:12px;">
-    <span id="scannerStatus" style="font-size:13px;"></span>
+    </div>
+    <div style="display:flex; align-items:flex-start; gap:8px;">
+      <span>
+        <strong>Trivy</strong><br />
+        <span style="color:var(--muted); font-size:12px;">Fast scan for vulnerabilities, secrets, and misconfigurations. Auto-installs on first scan.</span>
+      </span>
+    </div>
   </div>
 </section>
-
-<script>
-async function saveScannerEngine(engine) {
-  var statusEl = document.getElementById('scannerStatus');
-  statusEl.textContent = 'Saving...';
-  statusEl.style.color = 'var(--muted)';
-  try {
-    var res = await fetch('/setup/api/scanner-engine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ engine: engine }),
-    });
-    var data = await res.json();
-    if (data.success) {
-      statusEl.textContent = 'Engine set to ' + data.engine.toUpperCase() + '. Reload the dashboard to apply.';
-      statusEl.style.color = 'var(--success)';
-    } else {
-      statusEl.textContent = 'Save failed: ' + (data.error || 'unknown error');
-      statusEl.style.color = 'var(--danger)';
-    }
-  } catch (e) {
-    statusEl.textContent = 'Save failed: ' + e.message;
-    statusEl.style.color = 'var(--danger)';
-  }
-}
-</script>
 {% endblock %}

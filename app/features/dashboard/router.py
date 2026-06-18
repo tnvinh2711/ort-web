@@ -365,22 +365,13 @@ async def home(request: Request) -> HTMLResponse:
     success_jobs = sum(1 for j in jobs if j.status.value == "success")
     failed_jobs  = sum(1 for j in jobs if j.status.value == "failed")
 
-    # Scanner engine drives the dashboard labels and the install gate. Trivy
-    # auto-installs at scan time, so it is always "ready" (no ORT install needed).
-    from app.features.setup.scanner_config_store import get_scanner_engine
-    scanner_engine = get_scanner_engine()
-    scanner_label = "Trivy" if scanner_engine == "trivy" else "ORT"
-    scanner_ready = True if scanner_engine == "trivy" else bool(ort_path)
+    # Analyze runs ORT + Trivy together. ORT needs a one-time install (the gate
+    # below); Trivy auto-installs at scan time, so readiness tracks ORT only.
+    scanner_label = "ORT + Trivy"
+    scanner_ready = bool(ort_path)
 
-    # When Trivy is the active engine, relabel "ORT" in the dashboard's own
-    # chrome (hero, status, analysis copy) to the selected engine. Scoped to
-    # this page only — the job history keeps real per-job labels.
-    if scanner_engine == "trivy":
-        def _t(key: str) -> str:
-            return translate(lang, key).replace("ORT", scanner_label)
-    else:
-        def _t(key: str) -> str:
-            return translate(lang, key)
+    def _t(key: str) -> str:
+        return translate(lang, key)
 
     response = templates.TemplateResponse(
         request,
@@ -398,7 +389,6 @@ async def home(request: Request) -> HTMLResponse:
             "total_jobs": total_jobs,
             "success_jobs": success_jobs,
             "failed_jobs": failed_jobs,
-            "scanner_engine": scanner_engine,
             "scanner_label": scanner_label,
             "scanner_ready": scanner_ready,
             "base_template": _base_tpl(request),
@@ -711,25 +701,9 @@ async def analyze_project(
     if not work_dir.exists():
         work_dir = Path.cwd()
 
-    # Scanner engine is configured in Setup (Trivy vs ORT, mutually exclusive).
-    # When Trivy is selected for an analyze request, run only Trivy and skip the
-    # entire ORT pipeline (precheck/env-install/analyze/advise/report).
-    from app.features.setup.scanner_config_store import get_scanner_engine
-
-    if command == "analyze" and get_scanner_engine() == "trivy":
-        job = Job(
-            job_id=job_id,
-            name=f"Trivy Scan {Path(project_path).name}",
-            command=f"__trivy_scan__::{project_path}",
-            work_dir=str(work_dir),
-            language=ui_language,
-            project_path=project_path,
-            detected_language=language,
-            created_at=Job.now_iso(),
-            log_file=str(log_file),
-        )
-        await job_queue.enqueue(job)
-        return JSONResponse({"job_id": job_id})
+    # Analyze runs ORT + Trivy together: the ORT pipeline below, then Trivy into
+    # the same artifact dir (see jobs/queue.py). Both result sets surface in one
+    # job. The two engines are no longer mutually exclusive.
 
     # Auto-generate config.yml and ort.properties for the detected language
     if language:

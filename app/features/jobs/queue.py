@@ -595,6 +595,22 @@ class JobQueue:
                     return
                 if exit_code == 0 and "analyze" in command_tokens:
                     exit_code = await _run_post_analyze_pipeline(job, log_file)
+                # Trivy runs alongside ORT on every analyze job, into the same
+                # artifact dir, so both result sets surface together. It is
+                # independent: runs even if the ORT pipeline above failed, and a
+                # Trivy failure is logged but never fails the job (ORT is primary).
+                if "analyze" in command_tokens and job_id not in self._cancelled:
+                    trivy_dir = (settings.artifacts_dir / job_id).resolve()
+                    trivy_target = job.project_path or job.work_dir
+                    try:
+                        await run_trivy_scan(
+                            job.job_id, trivy_target, trivy_dir, log_file,
+                            on_process_start=register,
+                        )
+                    except Exception as exc:
+                        await _log_info(
+                            job_id, log_file, f"Trivy scan failed (non-fatal): {exc}"
+                        )
                 elif exit_code == 0 and "report" in command_tokens:
                     output_dir = _extract_output_dir(job.command)
                     if output_dir:

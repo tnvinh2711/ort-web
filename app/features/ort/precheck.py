@@ -191,7 +191,23 @@ async def run_environment_precheck(
     elif npm_ver:
         await _log(job_id, log_file, f"[precheck] OK   npm: {npm_ver}\n")
 
-    # 4. Package managers (only for analyze — other subcommands work on existing result files)
+    # 4. Trivy (analyze runs it alongside ORT). Non-blocking: it auto-installs
+    # at scan time, so a miss here is informational only.
+    if subcommand == "analyze":
+        trivy_path = shutil.which("trivy") or (
+            str(settings.bin_dir / ("trivy.exe" if os.name == "nt" else "trivy"))
+            if (settings.bin_dir / ("trivy.exe" if os.name == "nt" else "trivy")).exists()
+            else None
+        )
+        if trivy_path:
+            await _log(job_id, log_file, f"[precheck] OK   Trivy: {trivy_path}\n")
+        else:
+            await _log(
+                job_id, log_file,
+                "[precheck] INFO Trivy not found — it will auto-install on first scan.\n",
+            )
+
+    # 5. Package managers (only for analyze — other subcommands work on existing result files)
     if subcommand == "analyze":
         await _check_package_managers_for_workdir(job_id, work_dir, log_file)
 
