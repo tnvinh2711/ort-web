@@ -34,7 +34,12 @@ LANGUAGE_PATTERNS = {
     "nodejs": {"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"},
     "ruby": {".rb", "Gemfile", "Rakefile"},
     "php": {".php", "composer.json"},
-    "swift": {".swift", "Package.swift"},
+    "swift": {
+        ".swift", ".podspec",
+        "Package.swift", "Package.resolved",
+        "Podfile", "Podfile.lock",
+        "Cartfile", "Cartfile.resolved",
+    },
     "gradle": {"build.gradle", "build.gradle.kts", "gradle.properties"},
     "maven": {"pom.xml"},
     "npm": {"package.json"},

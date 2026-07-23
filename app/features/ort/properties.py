@@ -113,6 +113,22 @@ PACKAGE_MANAGERS: list[dict] = [
         "category": "swift",
     },
     {
+        "ort_name": "CocoaPods",
+        "label": "CocoaPods",
+        "detect_commands": ["pod"],
+        "also_needs": [],
+        "description": "iOS/macOS CocoaPods (Podfile)",
+        "category": "swift",
+    },
+    {
+        "ort_name": "Carthage",
+        "label": "Carthage",
+        "detect_commands": ["carthage"],
+        "also_needs": [],
+        "description": "iOS/macOS Carthage (Cartfile)",
+        "category": "swift",
+    },
+    {
         "ort_name": "DotNet",
         "label": ".NET / NuGet",
         "detect_commands": ["dotnet"],

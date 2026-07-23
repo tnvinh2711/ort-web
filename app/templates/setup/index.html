@@ -2,28 +2,339 @@
 {% block content %}
 <section class="hero">
   <h1>Environment Setup</h1>
-  <p>Choose the scanner engine used when you analyze a project.</p>
+  <p>Manage required tools and configure scanner engines.</p>
 </section>
 
+<!-- ── Required Tools ─────────────────────────────────────────────────── -->
+<section class="panel" id="tools-panel">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+    <h2 style="margin:0; font-size:16px;">Required Tools</h2>
+    <button class="btn-sm btn-secondary" onclick="loadEnvStatus()" id="refresh-btn">
+      ↻ Refresh
+    </button>
+  </div>
+  <div id="tools-body">
+    <p style="color:var(--muted); font-size:13px; margin:0;">Loading tool status…</p>
+  </div>
+</section>
+
+<!-- ── Scanner Engines ────────────────────────────────────────────────── -->
 <section class="panel">
   <h2>Scanner Engines</h2>
-  <p style="color:var(--muted); margin:0 0 12px; font-size:13px;">
-    Analyzing a project runs <strong>both</strong> engines together — results from each
-    appear side by side in the same job.
+  <p style="color:var(--secondary); margin:0 0 12px; font-size:13px;">
+    Analyzing a project runs <strong>both</strong> engines together — results appear side by side in the same job.
   </p>
   <div style="display:flex; flex-direction:column; gap:10px;">
     <div style="display:flex; align-items:flex-start; gap:8px;">
       <span>
         <strong>ORT</strong><br />
-        <span style="color:var(--muted); font-size:12px;">Full ORT pipeline (analyze → advise → report) with SBOM and license data. Install from the dashboard.</span>
+        <span style="color:var(--muted); font-size:12px;">Full ORT pipeline (analyze → advise → report) with SBOM and license data.</span>
       </span>
     </div>
     <div style="display:flex; align-items:flex-start; gap:8px;">
       <span>
         <strong>Trivy</strong><br />
-        <span style="color:var(--muted); font-size:12px;">Fast scan for vulnerabilities, secrets, and misconfigurations. Auto-installs on first scan.</span>
+        <span style="color:var(--muted); font-size:12px;">Fast scan for vulnerabilities, secrets, and misconfigurations.</span>
       </span>
     </div>
   </div>
 </section>
+
+<!-- ── AI / Vertex config ─────────────────────────────────────────────── -->
+<section class="panel" id="ai-panel">
+  <h2>AI Settings</h2>
+  <p style="color:var(--secondary); font-size:13px; margin:0 0 14px;">
+    Used for the AI-generated security summary on completed jobs.
+  </p>
+  <div style="display:flex; flex-direction:column; gap:12px; max-width:480px;">
+    <div>
+      <label style="display:block; font-size:12px; font-weight:600; color:var(--secondary); margin-bottom:4px;">API Key</label>
+      <input type="password" id="ai-api-key" placeholder="sk-…"
+             style="width:100%; box-sizing:border-box; padding:7px 10px; font-size:13px;
+                    border:1px solid var(--line); border-radius:6px; background:var(--surface);" />
+    </div>
+    <div>
+      <label style="display:block; font-size:12px; font-weight:600; color:var(--secondary); margin-bottom:4px;">Model</label>
+      <input type="text" id="ai-model" placeholder="grok-4.20-reasoning"
+             style="width:100%; box-sizing:border-box; padding:7px 10px; font-size:13px;
+                    border:1px solid var(--line); border-radius:6px; background:var(--surface);" />
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button onclick="saveVertexConfig()">Save</button>
+      <span id="save-ai-msg" style="font-size:12px; color:var(--success); display:none;">Saved ✓</span>
+    </div>
+  </div>
+</section>
+
+<script>
+(function() {
+  // ── state ────────────────────────────────────────────────────────────────
+  var _env = null;
+  var _state = {
+    java:     { phase: 'idle', logs: '', errorMsg: '' },
+    ort:      { phase: 'idle', logs: '', errorMsg: '' },
+    trivy:    { phase: 'idle', logs: '', errorMsg: '' },
+    trivy_db: { phase: 'idle', logs: '', errorMsg: '' },
+  };
+  var _sources = {};
+
+  // ── env status ───────────────────────────────────────────────────────────
+  function loadEnvStatus() {
+    var btn = document.getElementById('refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+    fetch('/setup/api/env-status')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        _env = data;
+        renderTools();
+      })
+      .catch(function(err) {
+        var body = document.getElementById('tools-body');
+        if (body) {
+          body.innerHTML = '<p style="color:var(--danger); font-size:13px; margin:0;">Failed to load status: ' + esc(String(err)) + '</p>';
+        }
+      })
+      .finally(function() {
+        var btn2 = document.getElementById('refresh-btn');
+        if (btn2) { btn2.disabled = false; btn2.textContent = '↻ Refresh'; }
+      });
+  }
+
+  // ── render ───────────────────────────────────────────────────────────────
+  function renderTools() {
+    if (!_env) return;
+
+    var rows = [
+      { key: 'java',     label: 'Java 21',  ok: _env.java_ok,     path: _env.java_path,  installLabel: 'Install' },
+      { key: 'ort',      label: 'ORT',      ok: _env.ort_ok,      path: _env.ort_path,   installLabel: 'Install' },
+      { key: 'trivy',    label: 'Trivy',    ok: _env.trivy_ok,    path: _env.trivy_path, installLabel: 'Install' },
+      { key: 'trivy_db', label: 'Trivy DB', ok: _env.trivy_db_ok, path: null,            installLabel: 'Download DB', hidden: !_env.trivy_ok },
+    ];
+
+    var anyRunning = Object.keys(_state).some(function(k) { return _state[k].phase === 'running'; });
+    var allOk = _env.java_ok && _env.ort_ok && _env.trivy_ok && _env.trivy_db_ok;
+
+    var html = '<div style="display:flex; flex-direction:column;">';
+
+    rows.forEach(function(row) {
+      if (row.hidden) return;
+      var st = _state[row.key];
+      var isOk = row.ok || st.phase === 'done';
+      var isRunning = st.phase === 'running';
+      var isError = st.phase === 'error';
+
+      var iconColor = isOk ? 'var(--success)' : isRunning ? '#3b82f6' : 'var(--danger)';
+      var iconChar  = isOk ? '✓' : isRunning ? '⟳' : '✗';
+
+      var pathHtml = '';
+      if (isOk) {
+        pathHtml = '<span style="font-size:12px; color:var(--muted); font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:340px; display:inline-block;">'
+          + esc(row.path || 'Ready') + '</span>';
+      } else if (!isRunning) {
+        pathHtml = '<span style="font-size:12px; color:var(--muted); font-style:italic;">Not installed</span>';
+      }
+
+      var btnHtml = '';
+      if (!isOk) {
+        var disabled = (anyRunning && !isRunning) || isRunning;
+        var btnLabel = isRunning ? 'Installing…' : esc(row.installLabel);
+        btnHtml = '<button class="btn-sm"'
+          + (disabled ? ' disabled style="opacity:0.5; cursor:not-allowed;"' : ' onclick="startInstall(\'' + row.key + '\')"')
+          + '>' + btnLabel + '</button>';
+      }
+
+      html += '<div style="border-bottom:1px solid var(--line);">';
+      html += '<div style="display:flex; align-items:center; gap:10px; padding:10px 4px;">';
+      html += '<span style="color:' + iconColor + '; font-size:16px; width:20px; text-align:center; flex-shrink:0; font-weight:bold;">' + iconChar + '</span>';
+      html += '<span style="font-weight:600; font-size:14px; width:90px; flex-shrink:0;">' + esc(row.label) + '</span>';
+      html += '<span style="flex:1; min-width:0;">' + pathHtml + '</span>';
+      html += '<span style="flex-shrink:0;">' + btnHtml + '</span>';
+      html += '</div>';
+
+      var showLog = isRunning || isError || (st.phase === 'done' && st.logs);
+      if (showLog) {
+        var logBorderColor = isError ? 'var(--danger-border)' : (st.phase === 'done' ? 'var(--success-border)' : 'transparent');
+        html += '<div style="padding:0 4px 10px; padding-left:30px;">';
+        html += '<div id="logbox-' + row.key + '"'
+          + ' style="background:#0f172a; color:#86efac; font-family:monospace; font-size:11px;'
+          + ' padding:8px 12px; border-radius:6px; max-height:180px; overflow-y:auto;'
+          + ' line-height:1.5; white-space:pre-wrap; border:1px solid ' + logBorderColor + ';">'
+          + esc(st.logs);
+        if (isError && st.errorMsg) {
+          html += '<span style="color:#f87171;">\nError: ' + esc(st.errorMsg) + '</span>';
+        }
+        html += '</div></div>';
+      }
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+
+    if (allOk) {
+      html += '<div style="display:flex; align-items:center; gap:8px; margin-top:14px;'
+        + ' padding:10px 12px; background:var(--success-light); border:1px solid var(--success-border);'
+        + ' border-radius:8px; font-size:13px; color:var(--success);">'
+        + '<span>✓</span><span>All tools are installed and ready.</span>'
+        + '</div>';
+    }
+
+    var body = document.getElementById('tools-body');
+    if (body) body.innerHTML = html;
+
+    // Scroll each log box to the bottom after render
+    rows.forEach(function(row) {
+      if (row.hidden) return;
+      var el = document.getElementById('logbox-' + row.key);
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }
+
+  // ── install ──────────────────────────────────────────────────────────────
+  function startInstall(tool) {
+    if (_state[tool].phase === 'running') return;
+
+    _state[tool] = { phase: 'running', logs: '', errorMsg: '' };
+    renderTools();
+
+    fetch('/setup/api/install/' + tool, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.session_id) {
+          _state[tool].phase = 'error';
+          _state[tool].errorMsg = 'No session ID returned from server.';
+          renderTools();
+          return;
+        }
+        connectStream(tool, data.session_id);
+      })
+      .catch(function(err) {
+        _state[tool].phase = 'error';
+        _state[tool].errorMsg = String(err);
+        renderTools();
+      });
+  }
+
+  function connectStream(tool, sessionId) {
+    if (_sources[tool]) {
+      try { _sources[tool].close(); } catch(_) {}
+    }
+
+    var source = new EventSource('/setup/api/install/' + sessionId + '/events');
+    _sources[tool] = source;
+
+    source.addEventListener('log', function(ev) {
+      try {
+        var data = JSON.parse(ev.data);
+        _state[tool].logs += (data.line || '');
+        // Update the log box in-place to avoid re-rendering the whole table.
+        var el = document.getElementById('logbox-' + tool);
+        if (el) {
+          el.textContent = _state[tool].logs;
+          el.scrollTop = el.scrollHeight;
+        }
+      } catch(_) {}
+    });
+
+    source.addEventListener('done', function() {
+      source.close();
+      delete _sources[tool];
+      _state[tool].phase = 'done';
+      // Re-fetch env status to confirm the tool now shows as installed.
+      setTimeout(function() {
+        fetch('/setup/api/env-status')
+          .then(function(r) { return r.json(); })
+          .then(function(data) { _env = data; renderTools(); })
+          .catch(function() { renderTools(); });
+      }, 800);
+    });
+
+    // Handles both server-sent "event: error" (has ev.data) and
+    // connection-level errors (no ev.data) in one place to avoid double-firing.
+    source.addEventListener('error', function(ev) {
+      if (ev.data) {
+        // Server-sent install error
+        try {
+          var d = JSON.parse(ev.data);
+          _state[tool].errorMsg = d.message || 'Install failed.';
+        } catch(_) {
+          _state[tool].errorMsg = 'Install failed.';
+        }
+        _state[tool].phase = 'error';
+        try { source.close(); } catch(_) {}
+        delete _sources[tool];
+        renderTools();
+      } else {
+        // Connection-level error (server closed / network drop)
+        if (_state[tool].phase === 'running') {
+          _state[tool].phase = 'error';
+          _state[tool].errorMsg = 'Connection to server lost.';
+          try { source.close(); } catch(_) {}
+          delete _sources[tool];
+          renderTools();
+        }
+      }
+    });
+  }
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+  function esc(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Vertex AI config ──────────────────────────────────────────────────────
+  function loadVertexConfig() {
+    fetch('/setup/api/vertex-config')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var keyEl = document.getElementById('ai-api-key');
+        var modelEl = document.getElementById('ai-model');
+        if (keyEl && data.api_key_masked) keyEl.placeholder = data.api_key_masked;
+        if (modelEl && data.model) modelEl.value = data.model;
+      })
+      .catch(function() {});
+  }
+
+  window.saveVertexConfig = function() {
+    var apiKey = (document.getElementById('ai-api-key') || {}).value || '';
+    var model  = (document.getElementById('ai-model')   || {}).value || '';
+    var btn = document.querySelector('#ai-panel button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    fetch('/setup/api/vertex-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, model: model }),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        if (data.success) {
+          var msg = document.getElementById('save-ai-msg');
+          if (msg) { msg.style.display = ''; setTimeout(function() { msg.style.display = 'none'; }, 2500); }
+        } else if (data.error) {
+          alert('Error: ' + data.error);
+        }
+      })
+      .catch(function(err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        alert('Save failed: ' + err);
+      });
+  };
+
+  // Expose to inline onclick handlers
+  window.startInstall = startInstall;
+  window.loadEnvStatus = loadEnvStatus;
+
+  // ── init ─────────────────────────────────────────────────────────────────
+  loadEnvStatus();
+  loadVertexConfig();
+})();
+</script>
 {% endblock %}

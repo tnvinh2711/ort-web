@@ -80,9 +80,21 @@ async def run_trivy_scan(
     if settings.trivy_severity.strip():
         tokens += ["--severity", settings.trivy_severity]
     if settings.trivy_offline:
-        # --skip-check-update stops the misconfig "checks bundle" network fetch
-        # so offline mode never touches the network.
-        tokens += ["--offline-scan", "--skip-db-update", "--skip-check-update"]
+        tokens += ["--offline-scan"]
+        # Trivy fatals with "--skip-db-update cannot be specified on the first
+        # run" when no DB is cached yet. Only skip the DB/checks update when a
+        # local DB actually exists; otherwise let Trivy download it once.
+        db_dir = cache_dir / "db"
+        db_present = (db_dir / "trivy.db").exists() or (db_dir / "metadata.json").exists()
+        if db_present:
+            # --skip-check-update also stops the misconfig "checks bundle" fetch
+            # so a warm cache never touches the network.
+            tokens += ["--skip-db-update", "--skip-check-update"]
+        else:
+            await log_fn(
+                f"[trivy] No local DB at {cache_dir / 'db' / 'trivy.db'} — "
+                "downloading it once (requires network on first run).\n"
+            )
     tokens += [str(target)]
 
     await log_fn(f"[trivy] $ {' '.join(tokens)}\n")

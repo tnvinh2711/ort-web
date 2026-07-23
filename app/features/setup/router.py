@@ -1,20 +1,32 @@
 """Router for the environment setup / ort.properties configuration page."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+import asyncio
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from uuid import uuid4
 
-from app.i18n import translate
+from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+
+from app.config import settings
+from app.features.jobs.event_contract import connected_payload, heartbeat_payload, to_sse_payload
+from app.features.jobs.log_stream import log_stream_hub
 from app.features.setup.vertex_config_store import get_vertex_config, mask_secret, save_vertex_config
+from app.i18n import translate
 from app.shared_templates import templates
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 
 
 def _lang(request: Request) -> str:
-    from app.config import settings
-
-    lang = request.query_params.get("lang") or request.cookies.get("lang") or settings.default_language
+    lang = (
+        request.query_params.get("lang")
+        or request.cookies.get("lang")
+        or settings.default_language
+    )
     return lang if lang in {"vi", "en"} else settings.default_language
 
 
@@ -38,6 +50,8 @@ def setup_page(request: Request) -> HTMLResponse:
     response.set_cookie("lang", lang)
     return response
 
+
+# ── Vertex AI config ───────────────────────────────────────────────────────────
 
 @router.get("/api/vertex-config")
 async def api_get_vertex_config() -> JSONResponse:
@@ -75,3 +89,178 @@ async def api_save_vertex_config(request: Request) -> JSONResponse:
         )
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── Environment status ─────────────────────────────────────────────────────────
+
+def _check_java_ok() -> tuple[bool, str | None]:
+    from app.features.ort.installer import _find_java_21_home
+    home = _find_java_21_home()
+    if home:
+        return True, str(home)
+    return False, None
+
+
+def _check_ort_ok() -> tuple[bool, str | None]:
+    launcher = settings.ort_install_dir / ("ort.bat" if os.name == "nt" else "ort")
+    if launcher.exists():
+        return True, str(launcher)
+    found = shutil.which("ort")
+    if found:
+        return True, found
+    return False, None
+
+
+def _check_trivy_ok() -> tuple[bool, str | None]:
+    from app.features.trivy.installer import _which_trivy
+    found = _which_trivy()
+    return (True, found) if found else (False, None)
+
+
+def _check_trivy_db_ok() -> bool:
+    db_dir = settings.trivy_cache_dir / "db"
+    return (db_dir / "trivy.db").exists() or (db_dir / "metadata.json").exists()
+
+
+@router.get("/api/env-status")
+async def api_env_status() -> JSONResponse:
+    java_ok, java_path = await asyncio.to_thread(_check_java_ok)
+    ort_ok, ort_path = await asyncio.to_thread(_check_ort_ok)
+    trivy_ok, trivy_path = await asyncio.to_thread(_check_trivy_ok)
+    trivy_db_ok = await asyncio.to_thread(_check_trivy_db_ok)
+    return JSONResponse({
+        "java_ok": java_ok,
+        "java_path": java_path,
+        "ort_ok": ort_ok,
+        "ort_path": ort_path,
+        "trivy_ok": trivy_ok,
+        "trivy_path": trivy_path,
+        "trivy_db_ok": trivy_db_ok,
+    })
+
+
+# ── Install tasks ──────────────────────────────────────────────────────────────
+
+async def _download_trivy_db(log) -> None:
+    from app.features.trivy.installer import _which_trivy
+    trivy_path = _which_trivy()
+    if not trivy_path:
+        await log("[trivy-db] Trivy binary not found — install Trivy first.\n")
+        return
+
+    cache_dir = settings.trivy_cache_dir
+    await log(f"[trivy-db] Downloading Trivy DB to {cache_dir} …\n")
+
+    env = os.environ.copy()
+    env["TRIVY_CACHE_DIR"] = str(cache_dir)
+
+    cmd = [
+        trivy_path, "image", "--download-db-only",
+        "--cache-dir", str(cache_dir), "--no-progress",
+    ]
+    await log(f"[trivy-db] $ {' '.join(str(c) for c in cmd)}\n")
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env=env,
+    )
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        await log(raw.decode("utf-8", errors="replace"))
+    rc = await proc.wait()
+    if rc == 0:
+        await log("[trivy-db] Database downloaded successfully.\n")
+    else:
+        await log(f"[trivy-db] Download failed (exit code {rc}).\n")
+
+
+async def _run_install(session_id: str, tool: str) -> None:
+    # Give the client ~300 ms to open the EventSource before we emit the first log.
+    await asyncio.sleep(0.3)
+
+    async def log(line: str) -> None:
+        msg = line if line.endswith("\n") else line + "\n"
+        await log_stream_hub.publish(session_id, {"type": "log", "line": msg})
+
+    try:
+        if tool == "java":
+            from app.features.ort.installer import _ensure_java_21
+            await _ensure_java_21(log)
+
+        elif tool == "ort":
+            # install_ort_local publishes to log_stream_hub(session_id) internally
+            from app.features.ort.installer import install_ort_local
+            with tempfile.NamedTemporaryFile(suffix=".log", delete=False) as f:
+                tmp_log = Path(f.name)
+            exit_code, _ = await install_ort_local(session_id, tmp_log)
+            try:
+                tmp_log.unlink(missing_ok=True)
+            except Exception:
+                pass
+            if exit_code != 0:
+                await log_stream_hub.publish(
+                    session_id,
+                    {"type": "error", "message": "ORT install failed — see log above."},
+                )
+                return
+
+        elif tool == "trivy":
+            from app.features.trivy.installer import ensure_trivy
+            result = await ensure_trivy(log)
+            if not result:
+                await log_stream_hub.publish(
+                    session_id,
+                    {"type": "error", "message": "Trivy install failed — see log above."},
+                )
+                return
+
+        elif tool == "trivy_db":
+            await _download_trivy_db(log)
+
+        await log_stream_hub.publish(session_id, {"type": "done"})
+
+    except Exception as exc:
+        await log_stream_hub.publish(
+            session_id,
+            {"type": "error", "message": str(exc)},
+        )
+
+
+@router.post("/api/install/{tool}")
+async def api_install_tool(tool: str, background_tasks: BackgroundTasks) -> JSONResponse:
+    if tool not in ("java", "ort", "trivy", "trivy_db"):
+        return JSONResponse({"error": f"Unknown tool: {tool}"}, status_code=400)
+    session_id = str(uuid4())
+    background_tasks.add_task(_run_install, session_id, tool)
+    return JSONResponse({"session_id": session_id})
+
+
+@router.get("/api/install/{session_id}/events")
+async def api_install_events(session_id: str) -> StreamingResponse:
+    queue = log_stream_hub.subscribe(session_id)
+
+    async def stream():
+        try:
+            yield connected_payload()
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield to_sse_payload(event)
+                    if event.get("type") in ("done", "error"):
+                        break
+                except asyncio.TimeoutError:
+                    yield heartbeat_payload()
+        finally:
+            log_stream_hub.unsubscribe(session_id, queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
