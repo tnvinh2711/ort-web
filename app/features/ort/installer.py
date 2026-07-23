@@ -365,6 +365,13 @@ def _deploy_distribution(
     install_home.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source_root, install_home)
 
+    # Ensure all scripts under bin/ are executable — tarfile/copytree can
+    # strip the execute bit on some filesystems or Python versions.
+    if os.name != "nt":
+        for script in (install_home / "bin").iterdir():
+            if script.is_file():
+                script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
     if os.name == "nt":
         launcher = target_bin_dir / "ort.bat"
         java_lines = (

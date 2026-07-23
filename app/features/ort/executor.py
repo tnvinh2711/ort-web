@@ -111,13 +111,25 @@ async def run_ort_command(
         extra_paths.append(str(venv_bin))
     env["PATH"] = os.pathsep.join(extra_paths) + os.pathsep + env.get("PATH", "")
 
-    executable = "ort"
+    # Resolve the ORT launcher to a full path so we never accidentally exec a
+    # stale system binary (e.g. an x86_64 Homebrew ort on Apple Silicon) and
+    # so installs that fell back to ~/.local/bin are found even when that
+    # directory is not in PATH.
     if os.name == "nt":
-        ort_bat = settings.ort_install_dir / "ort.bat"
-        if not ort_bat.exists():
-            ort_bat = settings.bin_dir / "ort.bat"
-        if ort_bat.exists():
-            executable = str(ort_bat)
+        _ort_candidates = [
+            settings.ort_install_dir / "ort.bat",
+            settings.bin_dir / "ort.bat",
+        ]
+    else:
+        _ort_candidates = [
+            settings.ort_install_dir / "ort",
+            Path.home() / ".local" / "bin" / "ort",
+            settings.bin_dir / "ort",
+        ]
+    executable = next(
+        (str(c) for c in _ort_candidates if c.exists()),
+        "ort",  # fallback: let the OS resolve via PATH
+    )
 
     if tokens[0] == "ort":
         tokens[0] = executable
@@ -126,6 +138,10 @@ async def run_ort_command(
     if os.name == "nt" and str(tokens[0]).lower().endswith(".bat"):
         # Batch scripts require cmd.exe invocation for consistent execution.
         spawn_tokens = ["cmd", "/c", *tokens]
+    elif os.name != "nt" and executable != "ort":
+        # Run the launcher via sh to prevent ENOEXEC if the execute bit is
+        # somehow missing (e.g. after reinstall on a filesystem that resets it).
+        spawn_tokens = ["sh", str(tokens[0]), *tokens[1:]]
 
     spawn_kwargs: dict = {
         "cwd": work_dir,
