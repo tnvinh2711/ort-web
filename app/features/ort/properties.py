@@ -105,7 +105,7 @@ PACKAGE_MANAGERS: list[dict] = [
         "category": "php",
     },
     {
-        "ort_name": "Spm",
+        "ort_name": "SwiftPM",
         "label": "Swift PM",
         "detect_commands": ["swift"],
         "also_needs": [],
@@ -129,7 +129,7 @@ PACKAGE_MANAGERS: list[dict] = [
         "category": "swift",
     },
     {
-        "ort_name": "DotNet",
+        "ort_name": "NuGet",
         "label": ".NET / NuGet",
         "detect_commands": ["dotnet"],
         "also_needs": [],
