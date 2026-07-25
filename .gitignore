@@ -26,3 +26,6 @@ Thumbs.db
 # Claude Code
 .claude/
 oss-knowledge
+
+# Swift Package Manager build cache
+.build/
