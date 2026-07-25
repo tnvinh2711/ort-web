@@ -1,9 +1,10 @@
-"""Run a Trivy filesystem scan and render a standalone Markdown report.
+"""Run a Trivy filesystem scan and render standalone Markdown/HTML reports.
 
 Trivy runs independently of ORT. Results are written to the job's artifact
-directory as ``trivy-result.json`` (raw) and ``trivy-report.md`` (rendered),
-both of which the results page lists/renders automatically. Nothing here
-touches ORT's ``vuln_summary`` or advisor data — the two engines are separate.
+directory as ``trivy-result.json`` (raw), ``trivy-report.md`` (Markdown) and
+``trivy-report.html`` (styled, self-contained HTML), all of which the results
+page lists/renders automatically. Nothing here touches ORT's ``vuln_summary``
+or advisor data — the two engines are separate.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from app.features.trivy.installer import ensure_trivy
 
 JSON_FILENAME = "trivy-result.json"
 REPORT_FILENAME = "trivy-report.md"
+HTML_REPORT_FILENAME = "trivy-report.html"
 
 _HEARTBEAT_INTERVAL = 60
 _READLINE_TIMEOUT = 60
@@ -56,6 +58,11 @@ async def run_trivy_scan(
     if not trivy_path:
         await log_fn("[trivy] Trivy unavailable — scan skipped.\n")
         return 1
+    # ensure_trivy() may return a path relative to the app's cwd (e.g.
+    # "runtime/bin/trivy"). The subprocess below runs with cwd=target, and a
+    # relative path containing a slash is resolved against *that* cwd by
+    # exec(), not searched via PATH — so it must be made absolute first.
+    trivy_path = str(Path(trivy_path).resolve())
 
     output_dir.mkdir(parents=True, exist_ok=True)
     json_out = output_dir / JSON_FILENAME
@@ -153,6 +160,11 @@ async def run_trivy_scan(
             await log_fn(f"[trivy] Report generated: {report_path.name}\n")
         except Exception as exc:
             await log_fn(f"[trivy] Markdown report generation failed: {exc}\n")
+        try:
+            html_report_path = build_trivy_html(json_out, output_dir / HTML_REPORT_FILENAME)
+            await log_fn(f"[trivy] HTML report generated: {html_report_path.name}\n")
+        except Exception as exc:
+            await log_fn(f"[trivy] HTML report generation failed: {exc}\n")
     elif exit_code != 0:
         await log_fn(f"[trivy] Scan failed with exit code {exit_code}.\n")
 
@@ -161,7 +173,7 @@ async def run_trivy_scan(
 
 
 # ---------------------------------------------------------------------------
-# JSON -> Markdown
+# JSON -> Markdown / HTML
 # ---------------------------------------------------------------------------
 
 def _md(value: Any, default: str = "-") -> str:
@@ -181,10 +193,8 @@ def _severity_summary(rows: list[dict]) -> str:
     return ", ".join(f"{s}: {c}" for s, c in ordered) if ordered else "0"
 
 
-def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
-    """Parse a Trivy JSON result and write a standalone Markdown report."""
-    data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
-
+def _parse_trivy_results(data: dict, fallback_artifact: str) -> tuple[str, list[dict], list[dict], list[dict]]:
+    """Extract (artifact, vulns, secrets, misconfigs) rows from a Trivy JSON result."""
     vulns: list[dict] = []
     secrets: list[dict] = []
     misconfigs: list[dict] = []
@@ -218,7 +228,15 @@ def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
                 "message": m.get("Message", ""),
             })
 
-    artifact = data.get("ArtifactName", json_path.parent.name)
+    artifact = data.get("ArtifactName", fallback_artifact)
+    return artifact, vulns, secrets, misconfigs
+
+
+def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
+    """Parse a Trivy JSON result and write a standalone Markdown report."""
+    data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
+    artifact, vulns, secrets, misconfigs = _parse_trivy_results(data, json_path.parent.name)
+
     lines = [
         f"# Trivy Report — {_md(artifact)}",
         "",
@@ -278,4 +296,135 @@ def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
         lines += ["No vulnerabilities, secrets, or misconfigurations were found.", ""]
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
+    return report_path
+
+
+def _html_escape(value: Any, default: str = "-") -> str:
+    if value is None:
+        return default
+    text = " ".join(str(value).split())
+    if not text:
+        return default
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _sev_class(severity: str) -> str:
+    sev = (severity or "UNKNOWN").strip().upper()
+    return sev if sev in _SEVERITY_ORDER else "UNKNOWN"
+
+
+def _severity_badges_html(rows: list[dict]) -> str:
+    counts: dict[str, int] = {}
+    for row in rows:
+        sev = _sev_class(row.get("severity", ""))
+        counts[sev] = counts.get(sev, 0) + 1
+    ordered = [(s, counts[s]) for s in _SEVERITY_ORDER if s in counts]
+    if not ordered:
+        return '<span class="badge UNKNOWN">0</span>'
+    return " ".join(f'<span class="badge {s}">{s}: {c}</span>' for s, c in ordered)
+
+
+def _rows_table_html(headers: list[str], rows: list[dict], fields: list[str], *, limit: int = 300) -> str:
+    thead = "".join(f"<th>{h}</th>" for h in headers)
+    body_rows = []
+    for r in rows[:limit]:
+        cells = "".join(
+            f'<td class="sev-{_sev_class(r["severity"])}">{_html_escape(r.get("severity"))}</td>'
+            if f == "severity" else f"<td>{_html_escape(r.get(f))}</td>"
+            for f in fields
+        )
+        body_rows.append(f"<tr>{cells}</tr>")
+    note = f'<p class="note">Showing {limit} of {len(rows)} rows.</p>' if len(rows) > limit else ""
+    return (
+        f'<table><thead><tr>{thead}</tr></thead><tbody>{"".join(body_rows)}</tbody></table>{note}'
+    )
+
+
+def build_trivy_html(json_path: Path, report_path: Path) -> Path:
+    """Parse a Trivy JSON result and write a standalone, self-contained HTML report."""
+    data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
+    artifact, vulns, secrets, misconfigs = _parse_trivy_results(data, json_path.parent.name)
+
+    sections = []
+    if vulns:
+        sections.append(
+            "<h2>Vulnerabilities</h2>"
+            + _rows_table_html(
+                ["Target", "Package", "Installed", "Fixed", "ID", "Severity", "Title"],
+                vulns,
+                ["target", "package", "installed", "fixed", "id", "severity", "title"],
+            )
+        )
+    if secrets:
+        sections.append(
+            "<h2>Secrets</h2>"
+            + _rows_table_html(
+                ["Target", "Rule", "Severity", "Line", "Title"],
+                secrets,
+                ["target", "rule", "severity", "line", "title"],
+            )
+        )
+    if misconfigs:
+        sections.append(
+            "<h2>Misconfigurations</h2>"
+            + _rows_table_html(
+                ["Target", "ID", "Severity", "Title", "Message"],
+                misconfigs,
+                ["target", "id", "severity", "title", "message"],
+            )
+        )
+    if not sections:
+        sections.append("<p>No vulnerabilities, secrets, or misconfigurations were found.</p>")
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Trivy Report — {_html_escape(artifact)}</title>
+<style>
+  :root {{ color-scheme: dark; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px 32px 48px;
+  }}
+  h1 {{ font-size: 1.4rem; margin-bottom: 4px; word-break: break-all; }}
+  h2 {{ font-size: 1.1rem; margin-top: 32px; color: #f8fafc; border-bottom: 1px solid #334155; padding-bottom: 6px; }}
+  .subtitle {{ color: #94a3b8; margin-top: 0; font-size: 0.85rem; }}
+  .summary {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0 8px; }}
+  .summary .group {{ background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; }}
+  .summary .group .label {{ display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; }}
+  table {{ border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 0.85rem; }}
+  th, td {{ text-align: left; padding: 6px 10px; border-bottom: 1px solid #1e293b; vertical-align: top; }}
+  th {{ background: #1e293b; color: #f8fafc; position: sticky; top: 0; }}
+  tr:hover td {{ background: #16213a; }}
+  .note {{ color: #94a3b8; font-size: 0.8rem; }}
+  .badge {{ display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }}
+  .badge.CRITICAL, .sev-CRITICAL {{ background: #7f1d1d; color: #fecaca; }}
+  .badge.HIGH, .sev-HIGH {{ background: #7c2d12; color: #fed7aa; }}
+  .badge.MEDIUM, .sev-MEDIUM {{ background: #78350f; color: #fde68a; }}
+  .badge.LOW, .sev-LOW {{ background: #14532d; color: #bbf7d0; }}
+  .badge.UNKNOWN, .sev-UNKNOWN {{ background: #334155; color: #cbd5e1; }}
+  td.sev-CRITICAL, td.sev-HIGH, td.sev-MEDIUM, td.sev-LOW, td.sev-UNKNOWN {{ font-weight: 600; }}
+  a.back {{ color: #93c5fd; text-decoration: none; font-size: 0.85rem; }}
+</style>
+</head>
+<body>
+  <a class="back" href="/results/">&larr; Back to Results</a>
+  <h1>Trivy Report</h1>
+  <p class="subtitle">{_html_escape(artifact)}</p>
+  <div class="summary">
+    <div class="group"><span class="label">Vulnerabilities ({len(vulns)})</span>{_severity_badges_html(vulns)}</div>
+    <div class="group"><span class="label">Secrets ({len(secrets)})</span>{_severity_badges_html(secrets)}</div>
+    <div class="group"><span class="label">Misconfigurations ({len(misconfigs)})</span>{_severity_badges_html(misconfigs)}</div>
+  </div>
+  {"".join(sections)}
+</body>
+</html>
+"""
+    report_path.write_text(html, encoding="utf-8")
     return report_path
