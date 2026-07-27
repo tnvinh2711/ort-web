@@ -82,7 +82,10 @@ def _build_ort_env() -> dict[str, str]:
     # downloads to stable storage shared across analyze jobs.
     env.setdefault("GRADLE_USER_HOME", str(settings.gradle_user_home_dir))
 
-    venv_bin = Path(sys.executable).resolve().parent
+    # Resolve the directory, not the Python symlink itself. Resolving
+    # ``.venv/bin/python`` first jumps to Homebrew's interpreter directory and
+    # drops sibling console scripts such as ``.venv/bin/scancode`` from PATH.
+    venv_bin = Path(sys.executable).parent.resolve()
     extra_paths = [str(settings.ort_install_dir), str(settings.bin_dir)]
     if venv_bin.is_dir():
         extra_paths.append(str(venv_bin))

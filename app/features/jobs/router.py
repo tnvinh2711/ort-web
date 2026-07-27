@@ -98,9 +98,10 @@ async def job_inline_panel(request: Request, job_id: str):
     ai_key_configured = bool(get_vertex_config().api_key.strip())
 
     log_path = Path(job.log_file)
-    log_text, vuln_summary, ai_report = await asyncio.gather(
+    log_text, vuln_summary, trivy_vuln_summary, ai_report = await asyncio.gather(
         asyncio.to_thread(_read_log_tail, log_path),
         asyncio.to_thread(get_vuln_summary, job.vuln_summary_json),
+        asyncio.to_thread(get_vuln_summary, job.trivy_vuln_summary_json),
         asyncio.to_thread(_load_ai_report, job),
     )
 
@@ -115,6 +116,7 @@ async def job_inline_panel(request: Request, job_id: str):
             "job": job,
             "log_text": log_text,
             "vuln_summary": vuln_summary,
+            "trivy_vuln_summary": trivy_vuln_summary,
             "ai_report": ai_report,
             "ai_key_configured": ai_key_configured,
             "status_map": {
@@ -138,9 +140,10 @@ async def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
     lang = _lang(request)
     ai_key_configured = bool(get_vertex_config().api_key.strip())
     log_path = Path(job.log_file)
-    log_text, vuln_summary, ai_report = await asyncio.gather(
+    log_text, vuln_summary, trivy_vuln_summary, ai_report = await asyncio.gather(
         asyncio.to_thread(_read_log_tail, log_path),
         asyncio.to_thread(get_vuln_summary, job.vuln_summary_json),
+        asyncio.to_thread(get_vuln_summary, job.trivy_vuln_summary_json),
         asyncio.to_thread(_load_ai_report, job),
     )
 
@@ -156,6 +159,7 @@ async def job_detail_page(request: Request, job_id: str) -> HTMLResponse:
             "job": job,
             "log_text": log_text,
             "vuln_summary": vuln_summary,
+            "trivy_vuln_summary": trivy_vuln_summary,
             "ai_report": ai_report,
             "ai_key_configured": ai_key_configured,
             "status_map": {

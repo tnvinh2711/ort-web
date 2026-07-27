@@ -115,8 +115,10 @@
         .catch(function() {});
     }
 
-    function _triggerRefresh() {
-      document.getElementById('jobs-filter-page').value = '1';
+    function _triggerRefresh(resetPage) {
+      if (resetPage !== false) {
+        document.getElementById('jobs-filter-page').value = '1';
+      }
       // Use HTMX trigger if available, else fall back to direct fetch
       var c = document.getElementById('jobs-container');
       if (c && window.htmx) {
@@ -157,7 +159,7 @@
 
     function goToPage(p) {
       document.getElementById('jobs-filter-page').value = p;
-      _triggerRefresh();
+      _triggerRefresh(false);
     }
 
     var _jobsPollTimer = null;

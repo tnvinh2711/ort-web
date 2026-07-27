@@ -61,7 +61,11 @@ class JobStore:
                     detected_language text,
                     ai_report_status text,
                     ai_report_path text,
-                    ai_report_summary text
+                    ai_report_summary text,
+                    vuln_summary_json text,
+                    trivy_vuln_summary_json text,
+                    scancode_enabled integer,
+                    analysis_enabled integer
                 )
                 """
             )
@@ -96,6 +100,12 @@ class JobStore:
                     con.execute("alter table jobs add column ai_report_summary text")
                 if "vuln_summary_json" not in column_names:
                     con.execute("alter table jobs add column vuln_summary_json text")
+                if "trivy_vuln_summary_json" not in column_names:
+                    con.execute("alter table jobs add column trivy_vuln_summary_json text")
+                if "scancode_enabled" not in column_names:
+                    con.execute("alter table jobs add column scancode_enabled integer")
+                if "analysis_enabled" not in column_names:
+                    con.execute("alter table jobs add column analysis_enabled integer")
             except Exception:
                 pass
 
@@ -119,13 +129,15 @@ class JobStore:
                     created_at, started_at, finished_at, exit_code,
                     error_message, log_file, ort_install_path, project_path,
                     detected_language, ai_report_status, ai_report_path,
-                    ai_report_summary, vuln_summary_json
+                    ai_report_summary, vuln_summary_json, trivy_vuln_summary_json,
+                    scancode_enabled, analysis_enabled
                 ) values (
                     :job_id, :name, :command, :work_dir, :language, :status,
                     :created_at, :started_at, :finished_at, :exit_code,
                     :error_message, :log_file, :ort_install_path, :project_path,
                     :detected_language, :ai_report_status, :ai_report_path,
-                    :ai_report_summary, :vuln_summary_json
+                    :ai_report_summary, :vuln_summary_json, :trivy_vuln_summary_json,
+                    :scancode_enabled, :analysis_enabled
                 )
                 """,
                 job.to_row(),
@@ -155,7 +167,10 @@ class JobStore:
                     ai_report_status = :ai_report_status,
                     ai_report_path = :ai_report_path,
                     ai_report_summary = :ai_report_summary,
-                    vuln_summary_json = :vuln_summary_json
+                    vuln_summary_json = :vuln_summary_json,
+                    trivy_vuln_summary_json = :trivy_vuln_summary_json,
+                    scancode_enabled = :scancode_enabled,
+                    analysis_enabled = :analysis_enabled
                 where job_id = :job_id
                 """,
                 job.to_row(),

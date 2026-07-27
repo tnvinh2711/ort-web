@@ -59,6 +59,58 @@ def _walk(node: Any):
             yield from _walk(item)
 
 
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return tuple(sorted((key, _freeze(item)) for key, item in value.items()))
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _detected_licenses_by_package_id(data: Any) -> dict[str, list[str]]:
+    """Map ScanCode summary licenses back to their ORT package IDs.
+
+    SwiftPM and Carthage commonly report no declared license metadata during
+    analysis. Their licenses exist in the scanner result, associated through a
+    package provenance, so reports must use this mapping as a fallback.
+    """
+    scanner = data.get("scanner") if isinstance(data, dict) else None
+    if not isinstance(scanner, dict):
+        return {}
+
+    provenance_to_ids: dict[Any, list[str]] = {}
+    for entry in scanner.get("provenances") or []:
+        if not isinstance(entry, dict):
+            continue
+        package_id = entry.get("id")
+        provenance = entry.get("package_provenance")
+        if not package_id or not isinstance(provenance, dict):
+            continue
+        provenance_to_ids.setdefault(_freeze(provenance), []).append(str(package_id))
+
+    licenses_by_id: dict[str, list[str]] = {}
+    for entry in scanner.get("scan_results") or []:
+        if not isinstance(entry, dict):
+            continue
+        provenance = entry.get("provenance")
+        summary = entry.get("summary")
+        if not isinstance(provenance, dict) or not isinstance(summary, dict):
+            continue
+        package_ids = provenance_to_ids.get(_freeze(provenance), [])
+        for finding in summary.get("licenses") or []:
+            if not isinstance(finding, dict):
+                continue
+            license_text = str(finding.get("license") or "").strip()
+            if not license_text:
+                continue
+            for package_id in package_ids:
+                bucket = licenses_by_id.setdefault(package_id, [])
+                if license_text not in bucket:
+                    bucket.append(license_text)
+
+    return licenses_by_id
+
+
 def _parse_package_id(package_id: str) -> tuple[str, str, str]:
     parts = str(package_id or "").split(":")
     if len(parts) >= 4:
@@ -121,19 +173,24 @@ def _extract_components(data: Any) -> list[dict[str, str]]:
     result = analyzer.get("result") if isinstance(analyzer, dict) else {}
     packages = result.get("packages") if isinstance(result, dict) else []
     rows: list[dict[str, str]] = []
+    detected_licenses = _detected_licenses_by_package_id(data)
 
     for pkg in packages if isinstance(packages, list) else []:
         if not isinstance(pkg, dict):
             continue
-        name, version, package_type = _parse_package_id(str(pkg.get("id") or ""))
+        package_id = str(pkg.get("id") or "")
+        name, version, package_type = _parse_package_id(package_id)
         if not name:
             continue
+        license_text = _license_text(pkg)
+        if not license_text and detected_licenses.get(package_id):
+            license_text = "detected: " + ", ".join(detected_licenses[package_id][:5])
         rows.append(
             {
                 "name": name,
                 "version": version,
                 "type": package_type,
-                "license": _license_text(pkg),
+                "license": license_text,
                 "homepage": _without_git_value(pkg.get("homepage_url")),
                 "description": _plain(pkg.get("description"), ""),
             }

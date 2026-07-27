@@ -57,11 +57,25 @@
         {% if vs and vs.total > 0 %}
         <div style="margin-top:10px; padding:10px 12px; background:var(--danger-light); border:1px solid var(--danger-border); border-radius:var(--radius); display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
           <span>&#9888;</span>
-          <span style="font-weight:600; color:var(--danger);">{{ t('job.vuln_warning') }} ({{ vs.total }})</span>
+          <span style="font-weight:600; color:var(--danger);">ORT · {{ t('job.vuln_warning') }} ({{ vs.total }})</span>
           {% if vs.critical > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fca5a5; color:#7f1d1d;">{{ t('job.vuln_critical') }}: {{ vs.critical }}</span>{% endif %}
           {% if vs.high > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fed7aa; color:#92400e;">{{ t('job.vuln_high') }}: {{ vs.high }}</span>{% endif %}
           {% if vs.medium > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fde68a; color:#78350f;">{{ t('job.vuln_medium') }}: {{ vs.medium }}</span>{% endif %}
           {% if vs.low > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_low') }}: {{ vs.low }}</span>{% endif %}
+          {% if vs.get('unknown', 0) > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_unknown') }}: {{ vs.get('unknown', 0) }}</span>{% endif %}
+        </div>
+        {% endif %}
+
+        {% set tvs = trivy_vuln_summaries.get(job.job_id) if trivy_vuln_summaries is defined else none %}
+        {% if tvs and tvs.total > 0 %}
+        <div style="margin-top:8px; padding:10px 12px; background:var(--danger-light); border:1px solid var(--danger-border); border-radius:var(--radius); display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+          <span>&#9888;</span>
+          <span style="font-weight:600; color:var(--danger);">Trivy · {{ t('job.vuln_warning') }} ({{ tvs.total }})</span>
+          {% if tvs.critical > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fca5a5; color:#7f1d1d;">{{ t('job.vuln_critical') }}: {{ tvs.critical }}</span>{% endif %}
+          {% if tvs.high > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fed7aa; color:#92400e;">{{ t('job.vuln_high') }}: {{ tvs.high }}</span>{% endif %}
+          {% if tvs.medium > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:#fde68a; color:#78350f;">{{ t('job.vuln_medium') }}: {{ tvs.medium }}</span>{% endif %}
+          {% if tvs.low > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_low') }}: {{ tvs.low }}</span>{% endif %}
+          {% if tvs.get('unknown', 0) > 0 %}<span style="padding:1px 8px; border-radius:10px; font-weight:600; background:var(--line-light); color:var(--secondary);">{{ t('job.vuln_unknown') }}: {{ tvs.get('unknown', 0) }}</span>{% endif %}
         </div>
         {% endif %}
 

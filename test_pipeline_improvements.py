@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,7 +11,10 @@ import app.features.jobs.queue as job_queue
 import app.features.trivy.scanner as trivy_scanner
 import app.features.ort.installer as ort_installer
 from app.config import Settings
+from app.models import Job
+from app.features.jobs.store import JobStore
 from app.features.jobs.queue import _advise_input, _run_post_analyze_pipeline
+from app.features.dashboard.router import _scan_mode_flags
 from app.features.ort.env_installer import detect_install_tasks
 from app.features.ort.executor import _build_ort_env
 from app.features.ort.installer import (
@@ -26,6 +31,9 @@ from app.features.ort.properties import (
     get_available_managers_for_language,
 )
 from app.features.ort.precheck import _find_swift_local_path_manifests
+from app.features.analysis.markdown_report import generate_markdown_report
+from app.features.analysis import vuln_summary
+from app.features.analysis.vuln_summary import parse_trivy_vuln_summary
 from app.features.trivy.scanner import (
     _is_swift_target,
     build_trivy_html,
@@ -39,6 +47,9 @@ def test_gradle_cache_and_no_duplicate_warmup(tmp_path, monkeypatch):
     monkeypatch.delenv("GRADLE_USER_HOME", raising=False)
     assert Settings().gradle_user_home_dir == (tmp_path / "cache").resolve()
     assert _build_ort_env()["GRADLE_USER_HOME"] == str((tmp_path / "cache").resolve())
+    assert str(Path(sys.executable).parent.resolve()) in _build_ort_env()["PATH"].split(
+        os.pathsep
+    )
 
     explicit_cache = tmp_path / "existing-gradle-home"
     monkeypatch.setenv("GRADLE_USER_HOME", str(explicit_cache))
@@ -53,6 +64,12 @@ def test_gradle_cache_and_no_duplicate_warmup(tmp_path, monkeypatch):
 
     assert not any(t["label"].startswith("gradle") for t in detect_install_tasks(str(project)))
     assert "Gradle" in get_available_managers_for_language("java", str(project))
+
+
+def test_scan_modes_are_mutually_exclusive():
+    assert _scan_mode_flags("vulnerability", "on", "on") == (True, False)
+    assert _scan_mode_flags("license", "on", "on") == (False, True)
+    assert _scan_mode_flags("full", None, None) == (True, True)
 
 
 def test_libmagic_install_commands_for_macos_and_windows(monkeypatch):
@@ -190,6 +207,14 @@ def test_nested_swift_manifests_are_resolved_but_build_cache_is_pruned(tmp_path)
     (checkout_manifest / "Package.swift").write_text("", encoding="utf-8")
     assert not _is_swift_target(str(checkout_only))
 
+    carthage_only = tmp_path / "carthage-only"
+    carthage_only.mkdir()
+    (carthage_only / "Cartfile.resolved").write_text(
+        "github \"example/dependency\" \"1.0.0\"",
+        encoding="utf-8",
+    )
+    assert _is_swift_target(str(carthage_only))
+
 
 def test_swift_repo_config_skips_build_checkouts_only_for_git_worktrees(tmp_path):
     git_project = tmp_path / "git-project"
@@ -265,6 +290,38 @@ def test_swift_local_path_precheck_ignores_build_checkouts(tmp_path):
     assert _find_swift_local_path_manifests(str(tmp_path)) == [manifest]
 
 
+def test_markdown_report_uses_scancode_license_for_swift_package(tmp_path):
+    package_id = "Swift::github.com/apple/swift-nio:2.28.0"
+    provenance = {"vcs_info": {"type": "Git", "url": "https://example.test/nio.git"}}
+    (tmp_path / "advisor-result.yml").write_text(
+        yaml.safe_dump(
+            {
+                "analyzer": {
+                    "result": {
+                        "projects": [],
+                        "packages": [{"id": package_id, "declared_licenses": []}],
+                    }
+                },
+                "scanner": {
+                    "provenances": [{"id": package_id, "package_provenance": provenance}],
+                    "scan_results": [
+                        {
+                            "provenance": provenance,
+                            "summary": {"licenses": [{"license": "Apache-2.0"}]},
+                        }
+                    ],
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = generate_markdown_report(tmp_path, markdown_reports_dir=tmp_path)
+    assert report is not None
+    assert "detected: Apache-2.0" in report.read_text(encoding="utf-8")
+
+
 def test_advise_uses_scan_result_only_after_success(tmp_path):
     analyzer = tmp_path / "analyzer-result.yml"
     scan = tmp_path / "scan-result.yml"
@@ -273,6 +330,65 @@ def test_advise_uses_scan_result_only_after_success(tmp_path):
     scan.write_text("scanner: {}", encoding="utf-8")
     assert _advise_input(analyzer, scan, 0) == scan
     assert _advise_input(analyzer, scan, 1) == analyzer
+
+
+def test_trivy_vulnerability_summary_counts_each_severity(tmp_path, monkeypatch):
+    artifact_dir = tmp_path / "artifacts"
+    result_dir = artifact_dir / "job"
+    result_dir.mkdir(parents=True)
+    (result_dir / "trivy-result.json").write_text(
+        json.dumps(
+            {
+                "Results": [
+                    {
+                        "Vulnerabilities": [
+                            {"VulnerabilityID": "CVE-1", "Severity": "CRITICAL"},
+                            {"VulnerabilityID": "CVE-2", "Severity": "HIGH"},
+                            {"VulnerabilityID": "CVE-3", "Severity": "MEDIUM"},
+                            {"VulnerabilityID": "CVE-4", "Severity": "LOW"},
+                            {"VulnerabilityID": "CVE-5", "Severity": "UNKNOWN"},
+                        ]
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(vuln_summary, "settings", SimpleNamespace(artifacts_dir=artifact_dir))
+    parse_trivy_vuln_summary.cache_clear()
+
+    assert parse_trivy_vuln_summary("job") == {
+        "critical": 1,
+        "high": 1,
+        "medium": 1,
+        "low": 1,
+        "unknown": 1,
+        "total": 5,
+    }
+
+
+def test_job_store_persists_trivy_summary_and_scancode_choice(tmp_path):
+    store = JobStore(tmp_path / "jobs.sqlite3")
+    store.initialize()
+    job = Job(
+        job_id="job",
+        name="Trivy Scan sample",
+        command="__trivy_scan__::/tmp/sample",
+        work_dir="/tmp/sample",
+        language="en",
+        log_file="/tmp/job.log",
+        created_at=Job.now_iso(),
+        scancode_enabled=False,
+        analysis_enabled=False,
+        trivy_vuln_summary_json='{"critical": 1, "total": 1}',
+    )
+    store.create_job(job)
+
+    loaded = store.get_job("job")
+    assert loaded is not None
+    assert loaded.scancode_enabled is False
+    assert loaded.analysis_enabled is False
+    assert loaded.trivy_vuln_summary_json == '{"critical": 1, "total": 1}'
 
 
 def test_swift_pipeline_runs_scancode_and_advises_from_scan(tmp_path, monkeypatch):
@@ -347,6 +463,76 @@ def test_swift_pipeline_falls_back_to_analyzer_when_scan_fails(tmp_path, monkeyp
     )
     assert asyncio.run(_run_post_analyze_pipeline(job, tmp_path / "job.log")) == 0
     assert f"-i {analyzer}" in commands[1]
+
+
+def test_scancode_toggle_can_skip_swift_license_scan(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "analyzer-result.yml").write_text("analyzer: {}", encoding="utf-8")
+    commands = []
+
+    async def fake_run(_job_id, command, _work_dir, _log_file):
+        commands.append(command)
+        if " advise " in command:
+            (output_dir / "advisor-result.yml").write_text("advisor: {}", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(job_queue, "_extract_output_dir", lambda _command: output_dir)
+    monkeypatch.setattr(job_queue, "run_ort_command", fake_run)
+    monkeypatch.setattr(job_queue, "_log_info", lambda *_args: asyncio.sleep(0))
+    monkeypatch.setattr(job_queue, "_create_analyzer_html_aliases", lambda _path: [])
+    monkeypatch.setattr(job_queue, "generate_component_inventory_csv", lambda _path: None)
+    monkeypatch.setattr(
+        job_queue, "_generate_markdown_report_for_job", lambda *_args, **_kwargs: asyncio.sleep(0)
+    )
+    monkeypatch.setattr(job_queue, "parse_vuln_summary", lambda _job_id: None)
+
+    job = SimpleNamespace(
+        job_id="job",
+        command=f"ort analyze -i {tmp_path} -o {output_dir}",
+        work_dir=str(tmp_path),
+        detected_language="swift",
+        scancode_enabled=False,
+        vuln_summary_json=None,
+    )
+    assert asyncio.run(_run_post_analyze_pipeline(job, tmp_path / "job.log")) == 0
+    assert not any(" scan " in command for command in commands)
+
+
+def test_scancode_only_pipeline_skips_osv_advisor(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    (output_dir / "analyzer-result.yml").write_text("analyzer: {}", encoding="utf-8")
+    commands = []
+
+    async def fake_run(_job_id, command, _work_dir, _log_file):
+        commands.append(command)
+        if " scan " in command:
+            (output_dir / "scan-result.yml").write_text("scanner: {}", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(job_queue, "_extract_output_dir", lambda _command: output_dir)
+    monkeypatch.setattr(job_queue, "run_ort_command", fake_run)
+    monkeypatch.setattr(job_queue.shutil, "which", lambda *_args, **_kwargs: "/venv/bin/scancode")
+    monkeypatch.setattr(job_queue, "_heal_scancode_cache", lambda *_args: asyncio.sleep(0))
+    monkeypatch.setattr(job_queue, "_log_info", lambda *_args: asyncio.sleep(0))
+    monkeypatch.setattr(job_queue, "_create_analyzer_html_aliases", lambda _path: [])
+    monkeypatch.setattr(job_queue, "generate_component_inventory_csv", lambda _path: None)
+    monkeypatch.setattr(
+        job_queue, "_generate_markdown_report_for_job", lambda *_args, **_kwargs: asyncio.sleep(0)
+    )
+
+    job = SimpleNamespace(
+        job_id="job",
+        command=f"ort analyze -i {tmp_path} -o {output_dir}",
+        work_dir=str(tmp_path),
+        detected_language="swift",
+        analysis_enabled=False,
+        scancode_enabled=True,
+    )
+    assert asyncio.run(_run_post_analyze_pipeline(job, tmp_path / "job.log")) == 0
+    assert any(" scan " in command for command in commands)
+    assert not any(" advise " in command for command in commands)
 
 
 def test_trivy_reports_include_optional_license_results(tmp_path):
@@ -454,3 +640,64 @@ def test_trivy_swift_license_command_omits_security_severity(tmp_path, monkeypat
     assert "--severity" not in license_tokens
     assert "--offline-scan" not in license_tokens
     assert "--skip-db-update" not in license_tokens
+
+
+def test_trivy_license_only_skips_vulnerability_scanners(tmp_path, monkeypatch):
+    target = tmp_path / "project"
+    target.mkdir()
+    output_dir = tmp_path / "output"
+    log_file = tmp_path / "scan.log"
+    calls = []
+
+    async def fake_ensure_trivy(_log_fn):
+        return tmp_path / "trivy"
+
+    async def fake_run(tokens, _target, _env, _log_fn, _on_process_start):
+        calls.append(tokens)
+        output = Path(tokens[tokens.index("--output") + 1])
+        output.write_text(
+            json.dumps(
+                {
+                    "Results": [
+                        {
+                            "Target": "Loose File License(s)",
+                            "Licenses": [{"Name": "MIT", "FilePath": "LICENSE"}],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 0
+
+    monkeypatch.setattr(trivy_scanner, "ensure_trivy", fake_ensure_trivy)
+    monkeypatch.setattr(trivy_scanner, "_run_trivy_process", fake_run)
+    monkeypatch.setattr(
+        trivy_scanner,
+        "settings",
+        SimpleNamespace(
+            trivy_cache_dir=tmp_path / "cache",
+            bin_dir=tmp_path / "bin",
+            trivy_scanners="vuln,secret,misconfig",
+            trivy_severity="HIGH,CRITICAL",
+            trivy_offline=False,
+        ),
+    )
+
+    assert asyncio.run(
+        run_trivy_scan(
+            "job",
+            str(target),
+            output_dir,
+            log_file,
+            include_vulnerabilities=False,
+            include_licenses=True,
+        )
+    ) == 0
+    assert len(calls) == 1
+    assert calls[0][calls[0].index("--scanners") + 1] == "license"
+    assert "--severity" not in calls[0]
+    assert json.loads(
+        (output_dir / "trivy-result.json").read_text(encoding="utf-8")
+    )["Results"] == []
+    assert "MIT" in (output_dir / "trivy-report.md").read_text(encoding="utf-8")

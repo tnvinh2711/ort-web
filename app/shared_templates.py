@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import platform
 import shlex
+from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
@@ -73,4 +74,15 @@ def platform_name() -> str:
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["display_ort_command"] = display_ort_command
 templates.env.globals["platform_name"] = platform_name()
-templates.env.globals["app_version"] = __version__
+
+# Static responses are immutable for one year, so a package version alone is
+# not enough during development. Include local asset mtimes to guarantee that
+# every CSS / JS edit receives a new URL and cannot reuse stale browser cache.
+_static_dir = Path(__file__).resolve().parent / "static"
+_asset_mtimes = [
+    path.stat().st_mtime_ns
+    for path in (_static_dir / "css" / "app.css", _static_dir / "js" / "app.js")
+    if path.exists()
+]
+_asset_fingerprint = max(_asset_mtimes, default=0)
+templates.env.globals["app_version"] = f"{__version__}-{_asset_fingerprint:x}"

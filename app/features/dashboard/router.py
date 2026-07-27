@@ -227,6 +227,11 @@ def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
         for job in jobs
         if job.status.value == "success"
     }
+    trivy_vuln_summaries = {
+        job.job_id: get_vuln_summary(job.trivy_vuln_summary_json)
+        for job in jobs
+        if job.status.value == "success"
+    }
     tpl = templates.env.get_template("dashboard/jobs_list.html")
     return tpl.render(
         lang=lang,
@@ -237,6 +242,7 @@ def render_jobs_list_html(lang: str, page: int = 1, per_page: int = 10) -> str:
         total_pages=total_pages,
         total=total,
         vuln_summaries=vuln_summaries,
+        trivy_vuln_summaries=trivy_vuln_summaries,
         status_map={
             "pending": translate(lang, "status.pending"),
             "running": translate(lang, "status.running"),
@@ -342,6 +348,20 @@ def _base_tpl(request: Request) -> str:
     return "base_partial.html" if request.headers.get("HX-Request") else "base.html"
 
 
+def _scan_mode_flags(
+    scan_mode: str | None,
+    run_analyze: str | None,
+    run_scancode: str | None,
+) -> tuple[bool, bool]:
+    """Return (vulnerability_enabled, license_enabled) for a submitted job."""
+    if scan_mode in {"vulnerability", "license", "full"}:
+        return (
+            scan_mode in {"vulnerability", "full"},
+            scan_mode in {"license", "full"},
+        )
+    return run_analyze == "on", run_scancode == "on"
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     _setup_store_hooks()
@@ -425,6 +445,11 @@ def jobs_partial(request: Request) -> HTMLResponse:
         for job in jobs
         if job.status.value == "success"
     }
+    trivy_vuln_summaries = {
+        job.job_id: get_vuln_summary(job.trivy_vuln_summary_json)
+        for job in jobs
+        if job.status.value == "success"
+    }
 
     return templates.TemplateResponse(
         request,
@@ -439,6 +464,7 @@ def jobs_partial(request: Request) -> HTMLResponse:
             "total_pages": total_pages,
             "total": total,
             "vuln_summaries": vuln_summaries,
+            "trivy_vuln_summaries": trivy_vuln_summaries,
             "status_map": {
                 "pending": translate(lang, "status.pending"),
                 "running": translate(lang, "status.running"),
@@ -689,6 +715,9 @@ async def analyze_project(
     project_path: str = Form(...),
     language: str = Form("python"),
     command: str = Form("analyze"),
+    run_analyze: str | None = Form(None),
+    run_scancode: str | None = Form(None),
+    scan_mode: str | None = Form(None),
     ui_language: str = Form("vi"),
 ) -> RedirectResponse:
     """Run ORT command on a project."""
@@ -701,11 +730,16 @@ async def analyze_project(
     if not work_dir.exists():
         work_dir = Path.cwd()
 
-    # Analyze runs ORT + Trivy together: the ORT pipeline below, then Trivy into
-    # the same artifact dir (see jobs/queue.py). Both result sets surface in one
-    # job. The two engines are no longer mutually exclusive.
+    # Older clients can still post the two checkbox fields.
+    analyze_enabled, scancode_enabled = _scan_mode_flags(
+        scan_mode, run_analyze, run_scancode
+    )
+    if not analyze_enabled and not scancode_enabled:
+        return JSONResponse({"error": "Select Analyze or ScanCode before starting."}, status_code=400)
 
     # Auto-generate config.yml and ort.properties for the detected language
+    # Both modes need ORT Analyzer data. ScanCode-only skips only the advisor
+    # and Trivy vulnerability stages later in the job queue.
     if language:
         generate_config_yml(language, project_path)
         auto_generate_ort_properties(language, project_path=str(work_dir))
@@ -736,12 +770,18 @@ async def analyze_project(
 
     job = Job(
         job_id=job_id,
-        name=f"ORT {command.title()} {Path(project_path).name}",
+        name=(
+            f"ORT {command.title()} {Path(project_path).name}"
+            if analyze_enabled
+            else f"ScanCode License Scan {Path(project_path).name}"
+        ),
         command=ort_command,
         work_dir=str(work_dir),
         language=ui_language,
         project_path=project_path,
         detected_language=language,
+        scancode_enabled=scancode_enabled,
+        analysis_enabled=analyze_enabled,
         created_at=Job.now_iso(),
         log_file=str(log_file),
     )

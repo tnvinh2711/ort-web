@@ -69,3 +69,34 @@ def get_vuln_summary(vuln_summary_json: str | None) -> dict | None:
         return json.loads(vuln_summary_json)
     except Exception:
         return None
+
+
+@lru_cache(maxsize=2000)
+def parse_trivy_vuln_summary(job_id: str) -> dict | None:
+    """Parse Trivy's JSON result and count vulnerabilities by severity."""
+    result_path = settings.artifacts_dir / job_id / "trivy-result.json"
+    if not result_path.exists():
+        return None
+    try:
+        data = json.loads(result_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    counts: dict[str, int] = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "unknown": 0,
+    }
+    for result in data.get("Results") or []:
+        if not isinstance(result, dict):
+            continue
+        for vulnerability in result.get("Vulnerabilities") or []:
+            if not isinstance(vulnerability, dict):
+                continue
+            severity = str(vulnerability.get("Severity") or "UNKNOWN").lower()
+            counts[severity if severity in counts else "unknown"] += 1
+
+    total = sum(counts.values())
+    return {**counts, "total": total} if total else None

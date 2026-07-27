@@ -221,7 +221,7 @@ Swift manifests do not declare license metadata. For Swift projects OSS Guard th
 
 - runs ORT ScanCode automatically, then feeds `scan-result.yml` into OSV advice so detected licenses and vulnerabilities survive together in `advisor-result.yml`;
 - resolves root and local `Package.swift` manifests so dependency source is available;
-- runs a separate Trivy `license --license-full` pass without the vulnerability severity filter, writing `trivy-license-result.json` and adding licenses to the existing Trivy Markdown/HTML reports.
+- runs a separate Trivy `license --license-full` pass without the vulnerability severity filter for both SwiftPM and Carthage projects, writing `trivy-license-result.json` and adding licenses to the existing Trivy Markdown/HTML reports.
 
 Trivy scans source already present under the selected project only. An Xcode project containing only `.xcodeproj/.../Package.resolved` still gets vulnerability results, but may show zero licenses because lockfiles contain no license text. OSS Guard does not clone those remote pins automatically.
 

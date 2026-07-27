@@ -36,6 +36,13 @@ class Job:
     ai_report_path: str | None = None
     ai_report_summary: str | None = None
     vuln_summary_json: str | None = None
+    trivy_vuln_summary_json: str | None = None
+    # None keeps the legacy default (Swift enables ScanCode automatically).
+    # New dashboard jobs set this explicitly from the ScanCode toggle.
+    scancode_enabled: bool | None = None
+    # False means a ScanCode-only job: prepare ORT analyzer data but do not run
+    # OSV advice or the independent Trivy vulnerability scan.
+    analysis_enabled: bool | None = None
 
     @staticmethod
     def now_iso() -> str:
@@ -62,6 +69,9 @@ class Job:
             "ai_report_path": self.ai_report_path,
             "ai_report_summary": self.ai_report_summary,
             "vuln_summary_json": self.vuln_summary_json,
+            "trivy_vuln_summary_json": self.trivy_vuln_summary_json,
+            "scancode_enabled": self.scancode_enabled,
+            "analysis_enabled": self.analysis_enabled,
         }
 
     @classmethod
@@ -86,4 +96,15 @@ class Job:
             ai_report_path=row.get("ai_report_path"),
             ai_report_summary=row.get("ai_report_summary"),
             vuln_summary_json=row.get("vuln_summary_json"),
+            trivy_vuln_summary_json=row.get("trivy_vuln_summary_json"),
+            scancode_enabled=(
+                None
+                if row.get("scancode_enabled") is None
+                else bool(row.get("scancode_enabled"))
+            ),
+            analysis_enabled=(
+                None
+                if row.get("analysis_enabled") is None
+                else bool(row.get("analysis_enabled"))
+            ),
         )

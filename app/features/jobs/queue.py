@@ -23,7 +23,7 @@ from app.features.trivy.scanner import run_trivy_scan
 from app.features.analysis.ai_suggestion_report import generate_ai_suggestion_report
 from app.features.analysis.component_inventory_csv import generate_component_inventory_csv
 from app.features.analysis.markdown_report import generate_markdown_report
-from app.features.analysis.vuln_summary import parse_vuln_summary
+from app.features.analysis.vuln_summary import parse_trivy_vuln_summary, parse_vuln_summary
 from app.features.setup.vertex_config_store import get_vertex_config
 
 
@@ -225,14 +225,14 @@ async def _run_post_analyze_pipeline(
     scan_result = output_dir / "scan-result.yml"
     advisor_result = output_dir / "advisor-result.yml"
 
-    # Step 1: Scan licenses with ScanCode. Swift runs automatically because its
-    # manifests expose no declared-license metadata; other languages remain
-    # opt-in because ScanCode downloads and scans every dependency source tree.
+    # Step 1: Scan licenses with ScanCode. Existing jobs retain the Swift
+    # default; new dashboard jobs use their explicit toggle setting.
     scan_exit = 1
     swift_license_scan = job.detected_language == "swift"
     scan_enabled = (
-        swift_license_scan
-        or os.environ.get("ORT_WEB_ENABLE_SCAN", "0").strip() == "1"
+        getattr(job, "scancode_enabled", None)
+        if getattr(job, "scancode_enabled", None) is not None
+        else swift_license_scan or os.environ.get("ORT_WEB_ENABLE_SCAN", "0").strip() == "1"
     )
     scancode_available = (
         shutil.which("scancode")
@@ -244,7 +244,7 @@ async def _run_post_analyze_pipeline(
     if not scan_enabled:
         await _log_info(
             job_id, log_file,
-            "Scanner step skipped (set ORT_WEB_ENABLE_SCAN=1 to enable license scanning)."
+            "Scanner step skipped by the ScanCode job option."
         )
     elif not scancode_available:
         reason = "Swift license detection skipped" if swift_license_scan else "Scanner skipped"
@@ -265,6 +265,33 @@ async def _run_post_analyze_pipeline(
         scan_exit = await run_ort_command(job_id, scan_cmd, job.work_dir, log_file)
         if scan_exit != 0:
             await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
+
+    # ScanCode-only is a license job. It still needs analyzer-result.yml as
+    # input, but must never call OSV or Trivy's vulnerability pass.
+    if getattr(job, "analysis_enabled", None) is False:
+        input_result = scan_result if scan_exit == 0 and scan_result.exists() else analyzer_result
+        report_cmd = (
+            f"ort -P ort.forceOverwrite=true report "
+            f"-i {shlex.quote(str(input_result))} "
+            f"-o {shlex.quote(str(output_dir))} "
+            f"--report-formats StaticHtml,WebApp"
+        )
+        await _log_info(
+            job_id, log_file,
+            "ORT ScanCode step completed. Generating license report..."
+        )
+        report_exit = await run_ort_command(job_id, report_cmd, job.work_dir, log_file)
+        if report_exit == 0:
+            for alias in _create_analyzer_html_aliases(output_dir):
+                await _log_info(job_id, log_file, f"Created report alias: {alias.name}")
+        try:
+            csv_path = generate_component_inventory_csv(output_dir)
+            if csv_path:
+                await _log_info(job_id, log_file, f"Generated component inventory CSV: {csv_path.name}")
+        except Exception as exc:
+            await _log_info(job_id, log_file, f"Component inventory CSV generation failed: {exc}")
+        await _generate_markdown_report_for_job(job_id, output_dir, log_file, reason="ScanCode-only")
+        return report_exit
 
     # Step 2: Advise. Feed the scan result forward when available so its
     # detected licenses survive alongside OSV vulnerabilities.
@@ -325,6 +352,16 @@ async def _run_post_analyze_pipeline(
         pass
 
     return report_exit
+
+
+def _cache_trivy_vuln_summary(job: Job) -> None:
+    """Persist the Trivy counts after its JSON artifact has been written."""
+    try:
+        import json as _json
+        parse_trivy_vuln_summary.cache_clear()
+        job.trivy_vuln_summary_json = _json.dumps(parse_trivy_vuln_summary(job.job_id))
+    except Exception:
+        pass
 
 
 def _create_analyzer_html_aliases(output_dir: Path) -> list[Path]:
@@ -547,6 +584,7 @@ class JobQueue:
                     job.job_id, target, trivy_out_dir, log_file,
                     on_process_start=register,
                 )
+                _cache_trivy_vuln_summary(job)
             else:
                 try:
                     _pre_tokens = shlex.split(job.command)
@@ -614,14 +652,23 @@ class JobQueue:
                 # artifact dir, so both result sets surface together. It is
                 # independent: runs even if the ORT pipeline above failed, and a
                 # Trivy failure is logged but never fails the job (ORT is primary).
-                if "analyze" in command_tokens and job_id not in self._cancelled:
+                analysis_enabled = getattr(job, "analysis_enabled", None)
+                scancode_enabled = getattr(job, "scancode_enabled", None)
+                if (
+                    "analyze" in command_tokens
+                    and (analysis_enabled is not False or scancode_enabled is True)
+                    and job_id not in self._cancelled
+                ):
                     trivy_dir = (settings.artifacts_dir / job_id).resolve()
                     trivy_target = job.project_path or job.work_dir
                     try:
                         await run_trivy_scan(
                             job.job_id, trivy_target, trivy_dir, log_file,
                             on_process_start=register,
+                            include_vulnerabilities=analysis_enabled is not False,
+                            include_licenses=scancode_enabled,
                         )
+                        _cache_trivy_vuln_summary(job)
                     except Exception as exc:
                         await _log_info(
                             job_id, log_file, f"Trivy scan failed (non-fatal): {exc}"

@@ -103,17 +103,88 @@
 
     <div id="analyzerOptions" style="display:none;">
       <label>{{ t('dashboard.language_select') }}</label>
-      <div class="row-input">
-        <select name="language" id="languageSelect" style="flex:1;">
+      <select name="language" id="languageSelect" style="width:100%;">
           <option value="">-- {{ t('dashboard.auto_detect') }} --</option>
           {% for opt in language_options %}
             <option value="{{ opt.value }}">{{ opt.label }}</option>
           {% endfor %}
-        </select>
-        <button type="submit" class="btn-primary" id="analyzeBtn">
-          {{ t('dashboard.cmd_analyze') }}
-        </button>
-      </div>
+      </select>
+      <fieldset class="scan-configurator">
+        <legend>{{ t('dashboard.run_options') }}</legend>
+        <!-- Compatibility fields keep an already-running pre-scan-mode backend
+             correct until the Python process is restarted. -->
+        <input id="runAnalyzeCompat" name="run_analyze" type="hidden" value="on" />
+        <input id="runScancodeCompat" name="run_scancode" type="hidden" value="on" />
+        <div class="scan-mode-grid">
+          <label class="scan-mode-card scan-mode-vuln" for="scanModeVulnerability">
+            <input id="scanModeVulnerability" name="scan_mode" value="vulnerability" type="radio" />
+            <span class="scan-mode-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3 4.5 6v5.2c0 4.8 3.2 8.1 7.5 9.8 4.3-1.7 7.5-5 7.5-9.8V6L12 3Z"/>
+                <path d="m9.4 12 1.7 1.7 3.7-4"/>
+              </svg>
+            </span>
+            <span class="scan-mode-copy">
+              <span class="scan-mode-title">{{ t('dashboard.mode_vulnerability') }}</span>
+              <span class="scan-mode-description">{{ t('dashboard.run_analyze_help') }}</span>
+            </span>
+            <span class="scan-mode-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 10 3 3 7-7"/>
+              </svg>
+            </span>
+          </label>
+          <label class="scan-mode-card scan-mode-license" for="scanModeLicense">
+            <input id="scanModeLicense" name="scan_mode" value="license" type="radio" />
+            <span class="scan-mode-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+                <path d="M14 3v5h5M9 13h6M9 17h4"/>
+              </svg>
+            </span>
+            <span class="scan-mode-copy">
+              <span class="scan-mode-title">{{ t('dashboard.mode_license') }}</span>
+              <span class="scan-mode-description">{{ t('dashboard.run_scancode_help') }}</span>
+            </span>
+            <span class="scan-mode-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 10 3 3 7-7"/>
+              </svg>
+            </span>
+          </label>
+          <label class="scan-mode-card scan-mode-full" for="scanModeFull">
+            <input id="scanModeFull" name="scan_mode" value="full" type="radio" checked />
+            <span class="scan-mode-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 7V4h3M17 4h3v3M20 17v3h-3M7 20H4v-3"/>
+                <circle cx="12" cy="12" r="4"/>
+                <path d="m10.5 12 1 1 2-2"/>
+              </svg>
+            </span>
+            <span class="scan-mode-copy">
+              <span class="scan-mode-title">{{ t('dashboard.mode_full') }}</span>
+              <span class="scan-mode-description">{{ t('dashboard.mode_full_help') }}</span>
+            </span>
+            <span class="scan-mode-check" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 10 3 3 7-7"/>
+              </svg>
+            </span>
+          </label>
+        </div>
+        <div class="scan-launch-bar">
+          <div class="scan-selection-status">
+            <span class="scan-selection-dot" aria-hidden="true"></span>
+            <span id="scanSelectionSummary">{{ t('dashboard.selection_both') }}</span>
+          </div>
+          <button type="submit" class="scan-start-button" id="analyzeBtn">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M6.5 4.3a1 1 0 0 1 1.5-.86l8.1 5.7a1 1 0 0 1 0 1.72L8 16.56a1 1 0 0 1-1.5-.86V4.3Z"/>
+            </svg>
+            <span class="scan-start-label">{{ t('dashboard.start_btn') }}</span>
+          </button>
+        </div>
+      </fieldset>
 
       <div id="recommendedManagers" style="display:none; padding:10px 14px; background:var(--info-light); border:1px solid var(--info-border); border-radius:var(--radius); font-size:13px; color:var(--primary); margin-top:8px;">
         <strong>{{ t('dashboard.recommended_managers') }}:</strong>
@@ -266,10 +337,11 @@
     e.preventDefault();
     var form = document.getElementById('projectForm');
     var btn = document.getElementById('analyzeBtn');
+    var btnLabel = btn.querySelector('.scan-start-label');
     var container = document.getElementById('job-panel-container');
 
     btn.disabled = true;
-    btn.textContent = '{{ t("status.running") }}...';
+    if (btnLabel) btnLabel.textContent = '{{ t("status.running") }}...';
 
     try {
       var response = await fetch('/jobs/analyze-project', {
@@ -287,11 +359,40 @@
       alert('{{ t("dashboard.error_pick_folder") }}');
     } finally {
       btn.disabled = false;
-      btn.textContent = '{{ t("dashboard.cmd_analyze") }}';
+      if (btnLabel) btnLabel.textContent = '{{ t("dashboard.start_btn") }}';
     }
 
     return false;
   }
+
+  (function() {
+    var modeInputs = document.querySelectorAll('input[name="scan_mode"]');
+    var startButton = document.getElementById('analyzeBtn');
+    var summary = document.getElementById('scanSelectionSummary');
+    var analyzeCompat = document.getElementById('runAnalyzeCompat');
+    var scancodeCompat = document.getElementById('runScancodeCompat');
+    if (!modeInputs.length || !startButton || !summary || !analyzeCompat || !scancodeCompat) return;
+
+    function syncRunOptions() {
+      var selected = document.querySelector('input[name="scan_mode"]:checked');
+      startButton.disabled = !selected;
+      analyzeCompat.value = selected && selected.value !== 'license' ? 'on' : 'off';
+      scancodeCompat.value = selected && selected.value !== 'vulnerability' ? 'on' : 'off';
+      if (!selected) {
+        summary.textContent = '{{ t("dashboard.selection_none") }}';
+      } else if (selected.value === 'vulnerability') {
+        summary.textContent = '{{ t("dashboard.selection_vuln") }}';
+      } else if (selected.value === 'license') {
+        summary.textContent = '{{ t("dashboard.selection_license") }}';
+      } else {
+        summary.textContent = '{{ t("dashboard.selection_both") }}';
+      }
+    }
+    modeInputs.forEach(function(input) {
+      input.addEventListener('change', syncRunOptions);
+    });
+    syncRunOptions();
+  })();
 
   async function submitInstall(e) {
     e.preventDefault();

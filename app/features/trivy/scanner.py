@@ -42,9 +42,16 @@ def _make_log_fn(job_id: str, log_file: Path):
 
 
 def _is_swift_target(target: str) -> bool:
+    """Return whether a target uses SwiftPM or Carthage manifests."""
+    definition_files = {
+        "Package.swift",
+        "Package.resolved",
+        "Cartfile",
+        "Cartfile.resolved",
+    }
     path = Path(target)
     if path.is_file():
-        return path.name in {"Package.swift", "Package.resolved"}
+        return path.name in definition_files
     if not path.is_dir():
         return False
     for _root, dirs, files in os.walk(path):
@@ -52,7 +59,7 @@ def _is_swift_target(target: str) -> bool:
             d for d in dirs
             if d not in {".git", ".build", "node_modules", "DerivedData"}
         ]
-        if "Package.swift" in files or "Package.resolved" in files:
+        if definition_files.intersection(files):
             return True
     return False
 
@@ -116,8 +123,10 @@ async def run_trivy_scan(
     log_file: Path,
     *,
     on_process_start: Optional[Callable[[asyncio.subprocess.Process], None]] = None,
+    include_vulnerabilities: bool = True,
+    include_licenses: bool | None = None,
 ) -> int:
-    """Scan ``target`` with Trivy. Returns the trivy exit code (0 = success)."""
+    """Run independently selectable Trivy vulnerability and license passes."""
     log_fn = _make_log_fn(job_id, log_file)
     target = str(Path(target).resolve())
 
@@ -136,6 +145,10 @@ async def run_trivy_scan(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     json_out = output_dir / JSON_FILENAME
+    if include_licenses is None:
+        # Preserve the historic automatic source-license scan for SwiftPM and
+        # Carthage when callers have not made an explicit UI selection.
+        include_licenses = _is_swift_target(target)
 
     cache_dir = settings.trivy_cache_dir
     env = os.environ.copy()
@@ -143,46 +156,42 @@ async def run_trivy_scan(
     # Ensure the freshly installed binary (in runtime/bin) is resolvable.
     env["PATH"] = str(settings.bin_dir) + os.pathsep + env.get("PATH", "")
 
-    # Always emit JSON to a file (the manual `trivy fs ...` dumps a table to
-    # stdout instead) so the results page has an artifact + a rendered report.
-    tokens = [
-        trivy_path,
-        "fs",
-        "--cache-dir", str(cache_dir),
-        "--scanners", settings.trivy_scanners,
-        "--no-progress",
-        "--format", "json",
-        "--output", str(json_out),
-    ]
-    if settings.trivy_severity.strip():
-        tokens += ["--severity", settings.trivy_severity]
-    if settings.trivy_offline:
-        tokens += ["--offline-scan"]
-        # Trivy fatals with "--skip-db-update cannot be specified on the first
-        # run" when no DB is cached yet. Only skip the DB/checks update when a
-        # local DB actually exists; otherwise let Trivy download it once.
-        db_dir = cache_dir / "db"
-        db_present = (db_dir / "trivy.db").exists() or (db_dir / "metadata.json").exists()
-        if db_present:
-            # --skip-check-update also stops the misconfig "checks bundle" fetch
-            # so a warm cache never touches the network.
-            tokens += ["--skip-db-update", "--skip-check-update"]
-        else:
-            await log_fn(
-                f"[trivy] No local DB at {cache_dir / 'db' / 'trivy.db'} — "
-                "downloading it once (requires network on first run).\n"
-            )
-    tokens += [str(target)]
-
-    await log_fn(
-        f"[trivy] Cache dir: {cache_dir} "
-        f"(offline={'on' if settings.trivy_offline else 'off'}, "
-        f"severity={settings.trivy_severity or 'all'})\n"
-    )
-    exit_code = await _run_trivy_process(tokens, target, env, log_fn, on_process_start)
+    exit_code = 0
+    if include_vulnerabilities:
+        # Always emit JSON to a file so the results page has an artifact + report.
+        tokens = [
+            trivy_path, "fs", "--cache-dir", str(cache_dir),
+            "--scanners", settings.trivy_scanners, "--no-progress",
+            "--format", "json", "--output", str(json_out),
+        ]
+        if settings.trivy_severity.strip():
+            tokens += ["--severity", settings.trivy_severity]
+        if settings.trivy_offline:
+            tokens += ["--offline-scan"]
+            db_dir = cache_dir / "db"
+            db_present = (db_dir / "trivy.db").exists() or (db_dir / "metadata.json").exists()
+            if db_present:
+                tokens += ["--skip-db-update", "--skip-check-update"]
+            else:
+                await log_fn(
+                    f"[trivy] No local DB at {cache_dir / 'db' / 'trivy.db'} — "
+                    "downloading it once (requires network on first run).\n"
+                )
+        tokens += [str(target)]
+        await log_fn(
+            f"[trivy] Cache dir: {cache_dir} "
+            f"(offline={'on' if settings.trivy_offline else 'off'}, "
+            f"severity={settings.trivy_severity or 'all'})\n"
+        )
+        exit_code = await _run_trivy_process(tokens, target, env, log_fn, on_process_start)
+    else:
+        json_out.write_text(
+            json.dumps({"ArtifactName": Path(target).name, "Results": []}), encoding="utf-8"
+        )
+        await log_fn("[trivy] Vulnerability pass disabled by the Analyze job option.\n")
 
     license_out: Path | None = None
-    if _is_swift_target(target):
+    if include_licenses:
         license_out = output_dir / LICENSE_JSON_FILENAME
         license_tokens = [
             trivy_path,
@@ -196,10 +205,15 @@ async def run_trivy_scan(
         ]
         # License scanning is source-only; vulnerability DB/offline flags do not apply.
         license_tokens += [str(target)]
-        await log_fn("[trivy] --- Swift full license scan (source already present only) ---\n")
+        await log_fn(
+            "[trivy] --- Trivy full license scan "
+            "(source already present only) ---\n"
+        )
         license_exit = await _run_trivy_process(
             license_tokens, target, env, log_fn, on_process_start
         )
+        if not include_vulnerabilities:
+            exit_code = license_exit
         if license_exit == 0 and license_out.exists():
             try:
                 license_data = json.loads(
