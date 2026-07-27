@@ -167,6 +167,22 @@ def _get_excludes_for_language(language: str) -> list[dict[str, str]]:
     return excludes
 
 
+def _is_in_git_work_tree(project_path: Optional[str]) -> bool:
+    """Return whether *project_path* is inside a Git work tree.
+
+    A worktree marker can be either a directory (normal clone) or a file
+    (linked worktree / submodule), so ``exists()`` is intentional here.
+    """
+    if not project_path:
+        return False
+
+    current = Path(project_path).resolve()
+    if current.is_file():
+        current = current.parent
+
+    return any((candidate / ".git").exists() for candidate in (current, *current.parents))
+
+
 def _refine_managers_for_project(managers: list[str], project_path: Optional[str]) -> list[str]:
     """Narrow down package managers based on actual definition files in the project."""
     if not project_path:
@@ -268,15 +284,18 @@ def generate_config_yml(
 def generate_repo_config(
     language: str,
     output_path: Path,
+    project_path: Optional[str] = None,
 ) -> Path:
     """Generate a repository configuration file (.ort.yml format).
 
-    Path excludes are intentionally omitted: ORT 85+ crashes with an
-    IllegalArgumentException when path excludes are present but the analysed
-    directory is not a git repository (e.g. a downloaded archive). Each ORT
-    package manager already excludes its own build-output directories
-    internally (NPM skips node_modules, Maven skips target/, etc.), so these
-    excludes are not required for a correct analyse result.
+    Build/cache paths are skipped completely when the project belongs to a Git
+    work tree. This is required for Swift because ``.build/checkouts`` contains
+    dependency manifests and nested Git metadata that ORT must not treat as
+    first-party projects.
+
+    ORT 85+ can crash when path excludes are applied to an analyzed directory
+    without repository VCS information (for example, an extracted archive), so
+    non-Git inputs intentionally retain an empty repository configuration.
 
     Returns the path where the file was written.
     """
@@ -288,5 +307,23 @@ def generate_repo_config(
         "\n"
     )
 
-    output_path.write_text(header + "{}\n", encoding="utf-8")
+    config: dict = {}
+    excludes = _get_excludes_for_language(language)
+    if excludes and _is_in_git_work_tree(project_path):
+        config = {
+            "analyzer": {
+                "skip_excluded": True,
+            },
+            "excludes": {
+                "paths": excludes,
+            },
+        }
+
+    yaml_body = yaml.dump(
+        config,
+        default_flow_style=False,
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    output_path.write_text(header + yaml_body, encoding="utf-8")
     return output_path

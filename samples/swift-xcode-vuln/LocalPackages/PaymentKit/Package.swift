@@ -10,7 +10,13 @@ let package = Package(
     products: [
         .library(name: "PaymentKit", targets: ["PaymentKit"])
     ],
+    dependencies: [
+        .package(path: "../AnalyticsKit")
+    ],
     targets: [
-        .target(name: "PaymentKit")
+        .target(
+            name: "PaymentKit",
+            dependencies: ["AnalyticsKit"]
+        )
     ]
 )

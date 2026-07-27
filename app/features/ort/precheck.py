@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -77,6 +78,48 @@ def _check_npm_version() -> tuple[Optional[str], bool]:
         return None, True
 
 
+def _find_swift_local_path_manifests(work_dir: str) -> list[Path]:
+    """Find first-party manifests that declare ``.package(path: ...)``."""
+    root = Path(work_dir)
+    if not root.is_dir():
+        return []
+
+    local_path_pattern = re.compile(
+        r"\.package\s*\(\s*(?:name\s*:\s*[^,]+,\s*)?path\s*:",
+        re.DOTALL,
+    )
+    prune_dirs = {
+        ".build",
+        ".git",
+        ".gradle",
+        ".idea",
+        ".venv",
+        ".vscode",
+        "DerivedData",
+        "build",
+        "dist",
+        "node_modules",
+        "target",
+        "venv",
+    }
+    manifests: list[Path] = []
+
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [directory for directory in dirs if directory not in prune_dirs]
+        if "Package.swift" not in files:
+            continue
+
+        manifest = Path(current_root) / "Package.swift"
+        try:
+            content = manifest.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if local_path_pattern.search(content):
+            manifests.append(manifest)
+
+    return manifests
+
+
 async def _check_package_managers_for_workdir(
     job_id: str,
     work_dir: str,
@@ -113,6 +156,15 @@ async def _check_package_managers_for_workdir(
         if not pm:
             continue
         path = _find_tool(pm["detect_commands"])
+        if ort_name == "Gradle" and not path:
+            project = Path(work_dir)
+            wrappers = (
+                project / "gradlew",
+                project / "gradlew.bat",
+            )
+            wrapper = next((candidate for candidate in wrappers if candidate.is_file()), None)
+            if wrapper:
+                path = str(wrapper)
         if path:
             await _log(job_id, log_file, f"[precheck] OK   {pm['label']}: {path}\n")
         else:
@@ -130,6 +182,31 @@ async def _check_package_managers_for_workdir(
             f"[precheck] WARN Missing: {', '.join(missing_labels)}. "
             "Install them before running analysis.\n",
         )
+
+    if language == "swift":
+        local_manifests = await asyncio.to_thread(
+            _find_swift_local_path_manifests,
+            work_dir,
+        )
+        if local_manifests:
+            project_root = Path(work_dir).resolve()
+            paths = ", ".join(
+                str(path.resolve().relative_to(project_root))
+                for path in local_manifests[:5]
+            )
+            more = (
+                f" (+{len(local_manifests) - 5} more)"
+                if len(local_manifests) > 5
+                else ""
+            )
+            await _log(
+                job_id,
+                log_file,
+                "[precheck] WARN Swift local path dependencies found in "
+                f"{paths}{more}. ORT SwiftPM may report "
+                "MalformedPackageURLException for .package(path: ...); "
+                "the local source remains covered by ScanCode and Trivy.\n",
+            )
 
 
 async def run_environment_precheck(

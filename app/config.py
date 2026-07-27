@@ -83,6 +83,14 @@ class Settings:
         return (self.runtime_dir / ".npm-cache").resolve()
 
     @property
+    def gradle_user_home_dir(self) -> Path:
+        """Persistent Gradle wrapper, dependency, and Tooling API cache."""
+        override = os.environ.get("ORT_WEB_GRADLE_USER_HOME")
+        if override:
+            return Path(override).expanduser().resolve()
+        return (self.runtime_dir / ".gradle").resolve()
+
+    @property
     def ort_config_dir(self) -> Path:
         return Path.home() / ".ort" / "config"
 
@@ -113,6 +121,7 @@ def ensure_runtime_dirs(settings: Settings) -> None:
     settings.markdown_reports_dir.mkdir(parents=True, exist_ok=True)
     settings.ort_config_dir.mkdir(parents=True, exist_ok=True)
     settings.npm_cache_dir.mkdir(parents=True, exist_ok=True)
+    settings.gradle_user_home_dir.mkdir(parents=True, exist_ok=True)
     settings.trivy_cache_dir.mkdir(parents=True, exist_ok=True)
 
 

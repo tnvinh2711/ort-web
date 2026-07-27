@@ -7,6 +7,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 from pathlib import Path
 
 from app.config import settings
@@ -200,6 +201,12 @@ async def _heal_scancode_cache(job_id: str, log_file: Path) -> None:
             pass
 
 
+def _advise_input(
+    analyzer_result: Path, scan_result: Path, scan_exit: int
+) -> Path:
+    return scan_result if scan_exit == 0 and scan_result.exists() else analyzer_result
+
+
 async def _run_post_analyze_pipeline(
     job: Job, log_file: Path
 ) -> int:
@@ -218,15 +225,21 @@ async def _run_post_analyze_pipeline(
     scan_result = output_dir / "scan-result.yml"
     advisor_result = output_dir / "advisor-result.yml"
 
-    # Step 1: Scan (license detection via ScanCode — OPTIONAL).
-    #
-    # ScanCode downloads and scans the full source tree of every dependency.
-    # For languages with large packages (C/C++, Java) this can take hours.
-    # The OSV vulnerability advisor only needs the analyzer-result, so scan
-    # is skipped by default.  Set ORT_WEB_ENABLE_SCAN=1 to enable it.
+    # Step 1: Scan licenses with ScanCode. Swift runs automatically because its
+    # manifests expose no declared-license metadata; other languages remain
+    # opt-in because ScanCode downloads and scans every dependency source tree.
     scan_exit = 1
-    scan_enabled = os.environ.get("ORT_WEB_ENABLE_SCAN", "0").strip() == "1"
-    scancode_available = shutil.which("scancode") or shutil.which("scancode.exe")
+    swift_license_scan = job.detected_language == "swift"
+    scan_enabled = (
+        swift_license_scan
+        or os.environ.get("ORT_WEB_ENABLE_SCAN", "0").strip() == "1"
+    )
+    scancode_available = (
+        shutil.which("scancode")
+        or shutil.which("scancode.exe")
+        or shutil.which("scancode", path=str(Path(sys.executable).parent))
+        or shutil.which("scancode.exe", path=str(Path(sys.executable).parent))
+    )
 
     if not scan_enabled:
         await _log_info(
@@ -234,10 +247,10 @@ async def _run_post_analyze_pipeline(
             "Scanner step skipped (set ORT_WEB_ENABLE_SCAN=1 to enable license scanning)."
         )
     elif not scancode_available:
+        reason = "Swift license detection skipped" if swift_license_scan else "Scanner skipped"
         await _log_info(
             job_id, log_file,
-            "Scanner skipped: ScanCode not found in PATH. "
-            "Install with: pip install scancode-toolkit"
+            f"{reason}: ScanCode not found in PATH. Install with: pip install scancode-toolkit"
         )
     else:
         # Guard against corrupt cache before invoking ORT.
@@ -253,10 +266,12 @@ async def _run_post_analyze_pipeline(
         if scan_exit != 0:
             await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
 
-    # Step 2: Advise
+    # Step 2: Advise. Feed the scan result forward when available so its
+    # detected licenses survive alongside OSV vulnerabilities.
+    advise_input = _advise_input(analyzer_result, scan_result, scan_exit)
     advise_cmd = (
         f"ort -P ort.forceOverwrite=true advise "
-        f"-i {shlex.quote(str(analyzer_result))} "
+        f"-i {shlex.quote(str(advise_input))} "
         f"-o {shlex.quote(str(output_dir))} "
         f"--advisors OSV"
     )
@@ -548,15 +563,13 @@ class JobQueue:
                         "Environment precheck failed: ORT or Java not found in PATH."
                     )
 
-                # For analyze jobs, pre-install project dependencies so that
-                # package manager caches (npm cache, Maven local repo, etc.)
-                # are populated.  ORT will then resolve from cache instead of
-                # hitting the network, turning a multi-minute download into
-                # a few-second cache hit on every subsequent run.
+                # For analyze jobs, prepare dependencies where a separate
+                # package-manager invocation is useful. Gradle is deliberately
+                # excluded; ORT uses its Tooling API directly with shared cache.
                 if "analyze" in _pre_tokens:
                     await _log_info(
                         job.job_id, log_file,
-                        "Pre-installing project dependencies (cache warm-up)..."
+                        "Preparing project dependencies..."
                     )
                     await install_environment(job.job_id, job.work_dir, log_file)
 
@@ -567,7 +580,9 @@ class JobQueue:
                     # so we must only enable tools actually present in PATH.
                     if job.detected_language:
                         from app.features.ort.properties import auto_generate_ort_properties
-                        updated = auto_generate_ort_properties(job.detected_language)
+                        updated = auto_generate_ort_properties(
+                            job.detected_language, project_path=job.work_dir
+                        )
                         await _log_info(
                             job.job_id, log_file,
                             f"ort.properties updated with available tools: {updated}"

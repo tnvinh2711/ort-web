@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shlex
+import sys
 from pathlib import Path
 
 from app.config import settings
@@ -67,6 +68,28 @@ _HEARTBEAT_INTERVAL = 60   # seconds between "still running" log lines
 _READLINE_TIMEOUT   = 60   # seconds to wait for a single line before heartbeat
 
 
+def _build_ort_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("LC_ALL", "en_US.UTF-8")
+    # Speed up npm installs that ORT runs internally: prefer the local cache,
+    # skip network audit and funding checks, suppress interactive prompts.
+    env.setdefault("NPM_CONFIG_CACHE", str(settings.npm_cache_dir))
+    env.setdefault("NPM_CONFIG_PREFER_OFFLINE", "true")
+    env.setdefault("NPM_CONFIG_AUDIT", "false")
+    env.setdefault("NPM_CONFIG_FUND", "false")
+    env.setdefault("NPM_CONFIG_PROGRESS", "false")
+    # Pin Gradle's wrapper distributions, dependency cache, and Tooling API
+    # downloads to stable storage shared across analyze jobs.
+    env.setdefault("GRADLE_USER_HOME", str(settings.gradle_user_home_dir))
+
+    venv_bin = Path(sys.executable).resolve().parent
+    extra_paths = [str(settings.ort_install_dir), str(settings.bin_dir)]
+    if venv_bin.is_dir():
+        extra_paths.append(str(venv_bin))
+    env["PATH"] = os.pathsep.join(extra_paths) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 async def run_ort_command(
     job_id: str,
     command: str,
@@ -90,26 +113,7 @@ async def run_ort_command(
     tokens = _validate_command(command)
     tokens = _ensure_force_overwrite(tokens)
 
-    env = os.environ.copy()
-    env.setdefault("LC_ALL", "en_US.UTF-8")
-    # Speed up npm installs that ORT runs internally: prefer the local cache,
-    # skip network audit and funding checks, suppress interactive prompts.
-    # NPM_CONFIG_CACHE pins the cache to a stable location shared with the
-    # env_installer pre-warm step so ORT reuses already-downloaded packages.
-    env.setdefault("NPM_CONFIG_CACHE", str(settings.npm_cache_dir))
-    env.setdefault("NPM_CONFIG_PREFER_OFFLINE", "true")
-    env.setdefault("NPM_CONFIG_AUDIT", "false")
-    env.setdefault("NPM_CONFIG_FUND", "false")
-    env.setdefault("NPM_CONFIG_PROGRESS", "false")
-
-    # Include project venv/bin so tools like python-inspector and scancode are found by ORT.
-    venv_bin = Path(__file__).resolve().parent.parent.parent / ".venv" / (
-        "Scripts" if os.name == "nt" else "bin"
-    )
-    extra_paths = [str(settings.ort_install_dir), str(settings.bin_dir)]
-    if venv_bin.is_dir():
-        extra_paths.append(str(venv_bin))
-    env["PATH"] = os.pathsep.join(extra_paths) + os.pathsep + env.get("PATH", "")
+    env = _build_ort_env()
 
     # Resolve the ORT launcher to a full path so we never accidentally exec a
     # stale system binary (e.g. an x86_64 Homebrew ort on Apple Silicon) and

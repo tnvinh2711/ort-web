@@ -483,27 +483,6 @@ def detect_install_tasks(work_dir: str) -> list[dict]:
             ["mvn", "dependency:resolve", "-q", "--no-transfer-progress", "-DskipTests"],
         ))
 
-    # ── Gradle ──────────────────────────────────────────────────────────
-    if (wd / "build.gradle").exists() or (wd / "build.gradle.kts").exists():
-        if os.name == "nt":
-            wrapper = wd / "gradlew.bat"
-            tool_cmd = str(wrapper) if wrapper.exists() else "gradle"
-        else:
-            wrapper = wd / "gradlew"
-            if wrapper.exists():
-                mode = wrapper.stat().st_mode
-                wrapper.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                tool_cmd = str(wrapper)
-            else:
-                tool_cmd = "gradle"
-        tasks.append(task(
-            "gradle dependencies",
-            [tool_cmd, "gradle"],
-            lambda log_fn: _install_gradle(log_fn, work_dir),
-            [tool_cmd, "dependencies", "--configuration", "runtimeClasspath", "-q"],
-            optional=True,
-        ))
-
     # ── Python ──────────────────────────────────────────────────────────
     if (wd / "poetry.lock").exists() and (wd / "pyproject.toml").exists():
         tasks.append(task(
@@ -567,11 +546,23 @@ def detect_install_tasks(work_dir: str) -> list[dict]:
         ))
 
     # ── Swift ───────────────────────────────────────────────────────────
-    if (wd / "Package.swift").exists():
+    # Resolve every first-party Swift package so Trivy / ScanCode can inspect
+    # dependency source under each package's .build/checkouts directory.
+    prune_dirs = {
+        ".build", ".git", "node_modules", "build", "dist", "target",
+        "DerivedData", ".gradle", ".idea", ".vscode", ".venv", "venv",
+    }
+    for root, dirs, files in os.walk(wd):
+        dirs[:] = [d for d in dirs if d not in prune_dirs]
+        if "Package.swift" not in files:
+            continue
+        package_root = str(Path(root))
         tasks.append(task(
-            "swift package resolve", ["swift"],
+            f"swift package resolve ({Path(root).relative_to(wd) or '.'})", ["swift"],
             None,
             ["swift", "package", "resolve"],
+            cwd=package_root,
+            optional=True,
         ))
 
     # ── Conan (C++) ─────────────────────────────────────────────────────

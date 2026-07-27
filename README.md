@@ -38,6 +38,18 @@ For Python project analysis, also install:
 pip3 install python-inspector setuptools
 ```
 
+The **Install ORT** flow verifies ScanCode's native `libmagic` dependency and
+installs it automatically on macOS (Homebrew or MacPorts) and Windows (bundled
+TypeCode plugin). On Linux, install it before running license scans:
+
+```bash
+# Ubuntu / Debian
+sudo apt install libmagic1
+```
+
+If automatic installation cannot run on macOS, install Homebrew or MacPorts
+first, or run `brew install libmagic` manually.
+
 ---
 
 ## Installation
@@ -202,6 +214,25 @@ Default install locations:
 The analysis runs inline on the dashboard with realtime log streaming. Results appear when complete.
 
 > **Note:** Folder picker on Linux requires `zenity` (GNOME) or `kdialog` (KDE) to be installed.
+
+### Swift licenses
+
+Swift manifests do not declare license metadata. For Swift projects OSS Guard therefore:
+
+- runs ORT ScanCode automatically, then feeds `scan-result.yml` into OSV advice so detected licenses and vulnerabilities survive together in `advisor-result.yml`;
+- resolves root and local `Package.swift` manifests so dependency source is available;
+- runs a separate Trivy `license --license-full` pass without the vulnerability severity filter, writing `trivy-license-result.json` and adding licenses to the existing Trivy Markdown/HTML reports.
+
+Trivy scans source already present under the selected project only. An Xcode project containing only `.xcodeproj/.../Package.resolved` still gets vulnerability results, but may show zero licenses because lockfiles contain no license text. OSS Guard does not clone those remote pins automatically.
+
+For Git worktrees, generated SwiftPM paths under `**/.build/**` are excluded
+with `analyzer.skip_excluded: true`. Local first-party packages remain
+analyzed, while dependency checkouts inside Swift's build cache are not
+misidentified as projects of the parent repository.
+
+### Gradle cache
+
+Gradle wrapper distributions, Tooling API downloads, and dependencies are cached persistently in `runtime/.gradle`. Override the path with `ORT_WEB_GRADLE_USER_HOME`. The first run, changed wrapper versions, dynamic dependencies, toolchains, or refreshed metadata can still download; unchanged later runs reuse the cache. OSS Guard no longer runs a separate `runtimeClasspath` warm-up before ORT.
 
 ### Job History
 

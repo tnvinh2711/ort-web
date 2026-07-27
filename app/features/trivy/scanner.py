@@ -1,9 +1,9 @@
 """Run a Trivy filesystem scan and render standalone Markdown/HTML reports.
 
 Trivy runs independently of ORT. Results are written to the job's artifact
-directory as ``trivy-result.json`` (raw), ``trivy-report.md`` (Markdown) and
-``trivy-report.html`` (styled, self-contained HTML), all of which the results
-page lists/renders automatically. Nothing here touches ORT's ``vuln_summary``
+directory as ``trivy-result.json`` (security), ``trivy-license-result.json``
+(source licenses), plus Markdown and self-contained HTML reports, all of which
+the results page lists/renders automatically. Nothing here touches ORT's ``vuln_summary``
 or advisor data — the two engines are separate.
 """
 from __future__ import annotations
@@ -21,6 +21,7 @@ from app.features.jobs.log_stream import log_stream_hub
 from app.features.trivy.installer import ensure_trivy
 
 JSON_FILENAME = "trivy-result.json"
+LICENSE_JSON_FILENAME = "trivy-license-result.json"
 REPORT_FILENAME = "trivy-report.md"
 HTML_REPORT_FILENAME = "trivy-report.html"
 
@@ -40,6 +41,74 @@ def _make_log_fn(job_id: str, log_file: Path):
     return _fn
 
 
+def _is_swift_target(target: str) -> bool:
+    path = Path(target)
+    if path.is_file():
+        return path.name in {"Package.swift", "Package.resolved"}
+    if not path.is_dir():
+        return False
+    for _root, dirs, files in os.walk(path):
+        dirs[:] = [
+            d for d in dirs
+            if d not in {".git", ".build", "node_modules", "DerivedData"}
+        ]
+        if "Package.swift" in files or "Package.resolved" in files:
+            return True
+    return False
+
+
+async def _run_trivy_process(
+    tokens: list[str],
+    target: str,
+    env: dict[str, str],
+    log_fn,
+    on_process_start: Optional[Callable[[asyncio.subprocess.Process], None]],
+) -> int:
+    await log_fn(f"[trivy] $ {' '.join(tokens)}\n")
+    process = await asyncio.create_subprocess_exec(
+        *tokens,
+        cwd=str(target) if Path(target).is_dir() else os.getcwd(),
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    if on_process_start is not None:
+        try:
+            on_process_start(process)
+        except Exception:
+            pass
+
+    start_time = time.monotonic()
+    timeout_secs = settings.ort_job_timeout_seconds
+    last_heartbeat = start_time
+    assert process.stdout is not None
+
+    while True:
+        if time.monotonic() - start_time >= timeout_secs:
+            await log_fn(f"[trivy] Exceeded timeout of {timeout_secs}s — killing process.\n")
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            return -1
+        try:
+            line = await asyncio.wait_for(process.stdout.readline(), timeout=_READLINE_TIMEOUT)
+        except asyncio.TimeoutError:
+            now = time.monotonic()
+            if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
+                elapsed = int(now - start_time)
+                await log_fn(f"[trivy] still running... ({elapsed // 60}m {elapsed % 60}s elapsed)\n")
+                last_heartbeat = now
+            continue
+        if not line:
+            break
+        await log_fn(line.decode("utf-8", errors="replace"))
+        last_heartbeat = time.monotonic()
+
+    return await process.wait()
+
+
 async def run_trivy_scan(
     job_id: str,
     target: str,
@@ -50,6 +119,7 @@ async def run_trivy_scan(
 ) -> int:
     """Scan ``target`` with Trivy. Returns the trivy exit code (0 = success)."""
     log_fn = _make_log_fn(job_id, log_file)
+    target = str(Path(target).resolve())
 
     await log_fn("[trivy] --- Trivy filesystem scan ---\n")
     await log_fn(f"[trivy] Target: {target}\n")
@@ -104,64 +174,68 @@ async def run_trivy_scan(
             )
     tokens += [str(target)]
 
-    await log_fn(f"[trivy] $ {' '.join(tokens)}\n")
     await log_fn(
         f"[trivy] Cache dir: {cache_dir} "
         f"(offline={'on' if settings.trivy_offline else 'off'}, "
         f"severity={settings.trivy_severity or 'all'})\n"
     )
+    exit_code = await _run_trivy_process(tokens, target, env, log_fn, on_process_start)
 
-    process = await asyncio.create_subprocess_exec(
-        *tokens,
-        cwd=str(target) if Path(target).is_dir() else os.getcwd(),
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-
-    if on_process_start is not None:
-        try:
-            on_process_start(process)
-        except Exception:
-            pass
-
-    start_time = time.monotonic()
-    timeout_secs = settings.ort_job_timeout_seconds
-    last_heartbeat = start_time
-    assert process.stdout is not None
-
-    while True:
-        if time.monotonic() - start_time >= timeout_secs:
-            await log_fn(f"[trivy] Exceeded timeout of {timeout_secs}s — killing process.\n")
+    license_out: Path | None = None
+    if _is_swift_target(target):
+        license_out = output_dir / LICENSE_JSON_FILENAME
+        license_tokens = [
+            trivy_path,
+            "fs",
+            "--cache-dir", str(cache_dir),
+            "--scanners", "license",
+            "--license-full",
+            "--no-progress",
+            "--format", "json",
+            "--output", str(license_out),
+        ]
+        # License scanning is source-only; vulnerability DB/offline flags do not apply.
+        license_tokens += [str(target)]
+        await log_fn("[trivy] --- Swift full license scan (source already present only) ---\n")
+        license_exit = await _run_trivy_process(
+            license_tokens, target, env, log_fn, on_process_start
+        )
+        if license_exit == 0 and license_out.exists():
             try:
-                process.kill()
-            except ProcessLookupError:
-                pass
-            return -1
-        try:
-            line = await asyncio.wait_for(process.stdout.readline(), timeout=_READLINE_TIMEOUT)
-        except asyncio.TimeoutError:
-            now = time.monotonic()
-            if now - last_heartbeat >= _HEARTBEAT_INTERVAL:
-                elapsed = int(now - start_time)
-                await log_fn(f"[trivy] still running... ({elapsed // 60}m {elapsed % 60}s elapsed)\n")
-                last_heartbeat = now
-            continue
-        if not line:
-            break
-        await log_fn(line.decode("utf-8", errors="replace"))
-        last_heartbeat = time.monotonic()
-
-    exit_code = await process.wait()
+                license_data = json.loads(
+                    license_out.read_text(encoding="utf-8", errors="replace")
+                )
+                licenses = (
+                    _parse_trivy_licenses(license_data)
+                    if isinstance(license_data, dict)
+                    else []
+                )
+            except (OSError, json.JSONDecodeError) as exc:
+                await log_fn(f"[trivy] License result unreadable: {exc} (non-fatal).\n")
+                license_out = None
+            else:
+                await log_fn(f"[trivy] License findings: {len(licenses)}\n")
+                if not licenses:
+                    await log_fn(
+                        "[trivy] No source licenses found. Package.resolved alone has no license "
+                        "text; resolve local Package.swift manifests to create .build/checkouts.\n"
+                    )
+        else:
+            await log_fn(f"[trivy] License scan failed with exit code {license_exit} (non-fatal).\n")
+            license_out = None
 
     if exit_code == 0 and json_out.exists():
         try:
-            report_path = build_trivy_markdown(json_out, output_dir / REPORT_FILENAME)
+            report_path = build_trivy_markdown(
+                json_out, output_dir / REPORT_FILENAME, license_out
+            )
             await log_fn(f"[trivy] Report generated: {report_path.name}\n")
         except Exception as exc:
             await log_fn(f"[trivy] Markdown report generation failed: {exc}\n")
         try:
-            html_report_path = build_trivy_html(json_out, output_dir / HTML_REPORT_FILENAME)
+            html_report_path = build_trivy_html(
+                json_out, output_dir / HTML_REPORT_FILENAME, license_out
+            )
             await log_fn(f"[trivy] HTML report generated: {html_report_path.name}\n")
         except Exception as exc:
             await log_fn(f"[trivy] HTML report generation failed: {exc}\n")
@@ -193,7 +267,9 @@ def _severity_summary(rows: list[dict]) -> str:
     return ", ".join(f"{s}: {c}" for s, c in ordered) if ordered else "0"
 
 
-def _parse_trivy_results(data: dict, fallback_artifact: str) -> tuple[str, list[dict], list[dict], list[dict]]:
+def _parse_trivy_results(
+    data: dict, fallback_artifact: str
+) -> tuple[str, list[dict], list[dict], list[dict]]:
     """Extract (artifact, vulns, secrets, misconfigs) rows from a Trivy JSON result."""
     vulns: list[dict] = []
     secrets: list[dict] = []
@@ -232,10 +308,43 @@ def _parse_trivy_results(data: dict, fallback_artifact: str) -> tuple[str, list[
     return artifact, vulns, secrets, misconfigs
 
 
-def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
-    """Parse a Trivy JSON result and write a standalone Markdown report."""
+def _parse_trivy_licenses(data: dict) -> list[dict]:
+    licenses: list[dict] = []
+    for result in data.get("Results") or []:
+        if not isinstance(result, dict):
+            continue
+        target = result.get("Target", "")
+        for item in result.get("Licenses") or []:
+            if not isinstance(item, dict):
+                continue
+            confidence = item.get("Confidence")
+            licenses.append({
+                "target": target,
+                "license": item.get("Name") or item.get("License") or "",
+                "category": item.get("Category") or item.get("Severity") or "",
+                "package": item.get("PkgName") or item.get("FilePath") or "",
+                "confidence": "" if confidence is None else confidence,
+            })
+    return licenses
+
+
+def _load_trivy_licenses(license_json_path: Path | None) -> list[dict]:
+    if not license_json_path or not license_json_path.exists():
+        return []
+    try:
+        data = json.loads(license_json_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return _parse_trivy_licenses(data) if isinstance(data, dict) else []
+
+
+def build_trivy_markdown(
+    json_path: Path, report_path: Path, license_json_path: Path | None = None
+) -> Path:
+    """Parse Trivy JSON results and write a standalone Markdown report."""
     data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
     artifact, vulns, secrets, misconfigs = _parse_trivy_results(data, json_path.parent.name)
+    licenses = _load_trivy_licenses(license_json_path)
 
     lines = [
         f"# Trivy Report — {_md(artifact)}",
@@ -245,6 +354,7 @@ def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
         f"- Vulnerabilities: {len(vulns)} ({_severity_summary(vulns)})",
         f"- Secrets: {len(secrets)} ({_severity_summary(secrets)})",
         f"- Misconfigurations: {len(misconfigs)} ({_severity_summary(misconfigs)})",
+        f"- Licenses: {len(licenses)}",
         "",
     ]
 
@@ -292,8 +402,24 @@ def build_trivy_markdown(json_path: Path, report_path: Path) -> Path:
             )
         lines.append("")
 
-    if not (vulns or secrets or misconfigs):
-        lines += ["No vulnerabilities, secrets, or misconfigurations were found.", ""]
+    if licenses:
+        lines += [
+            "## Licenses",
+            "",
+            "| Target | License | Category | Package / File | Confidence |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for row in licenses[:300]:
+            lines.append(
+                f"| {_md(row['target'])} | {_md(row['license'])} | {_md(row['category'])} | "
+                f"{_md(row['package'])} | {_md(row['confidence'])} |"
+            )
+        if len(licenses) > 300:
+            lines += ["", f"_Showing 300 of {len(licenses)} licenses._"]
+        lines.append("")
+
+    if not (vulns or secrets or misconfigs or licenses):
+        lines += ["No vulnerabilities, secrets, misconfigurations, or licenses were found.", ""]
 
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path
@@ -329,7 +455,9 @@ def _severity_badges_html(rows: list[dict]) -> str:
     return " ".join(f'<span class="badge {s}">{s}: {c}</span>' for s, c in ordered)
 
 
-def _rows_table_html(headers: list[str], rows: list[dict], fields: list[str], *, limit: int = 300) -> str:
+def _rows_table_html(
+    headers: list[str], rows: list[dict], fields: list[str], *, limit: int = 300
+) -> str:
     thead = "".join(f"<th>{h}</th>" for h in headers)
     body_rows = []
     for r in rows[:limit]:
@@ -345,10 +473,13 @@ def _rows_table_html(headers: list[str], rows: list[dict], fields: list[str], *,
     )
 
 
-def build_trivy_html(json_path: Path, report_path: Path) -> Path:
-    """Parse a Trivy JSON result and write a standalone, self-contained HTML report."""
+def build_trivy_html(
+    json_path: Path, report_path: Path, license_json_path: Path | None = None
+) -> Path:
+    """Parse Trivy JSON results and write a self-contained HTML report."""
     data = json.loads(json_path.read_text(encoding="utf-8", errors="replace"))
     artifact, vulns, secrets, misconfigs = _parse_trivy_results(data, json_path.parent.name)
+    licenses = _load_trivy_licenses(license_json_path)
 
     sections = []
     if vulns:
@@ -378,8 +509,19 @@ def build_trivy_html(json_path: Path, report_path: Path) -> Path:
                 ["target", "id", "severity", "title", "message"],
             )
         )
+    if licenses:
+        sections.append(
+            "<h2>Licenses</h2>"
+            + _rows_table_html(
+                ["Target", "License", "Category", "Package / File", "Confidence"],
+                licenses,
+                ["target", "license", "category", "package", "confidence"],
+            )
+        )
     if not sections:
-        sections.append("<p>No vulnerabilities, secrets, or misconfigurations were found.</p>")
+        sections.append(
+            "<p>No vulnerabilities, secrets, misconfigurations, or licenses were found.</p>"
+        )
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -421,6 +563,7 @@ def build_trivy_html(json_path: Path, report_path: Path) -> Path:
     <div class="group"><span class="label">Vulnerabilities ({len(vulns)})</span>{_severity_badges_html(vulns)}</div>
     <div class="group"><span class="label">Secrets ({len(secrets)})</span>{_severity_badges_html(secrets)}</div>
     <div class="group"><span class="label">Misconfigurations ({len(misconfigs)})</span>{_severity_badges_html(misconfigs)}</div>
+    <div class="group"><span class="label">Licenses</span><span class="badge UNKNOWN">{len(licenses)}</span></div>
   </div>
   {"".join(sections)}
 </body>

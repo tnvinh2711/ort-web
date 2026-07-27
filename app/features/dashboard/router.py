@@ -708,7 +708,7 @@ async def analyze_project(
     # Auto-generate config.yml and ort.properties for the detected language
     if language:
         generate_config_yml(language, project_path)
-        auto_generate_ort_properties(language)
+        auto_generate_ort_properties(language, project_path=str(work_dir))
 
     # ORT auto-reads ~/.ort/config/config.yml by default, no need for --config flag.
     job_output_dir = (settings.artifacts_dir / job_id).resolve()
@@ -718,7 +718,7 @@ async def analyze_project(
     repo_config_flag = ""
     if language:
         repo_config_path = job_output_dir / "repo-config.ort.yml"
-        generate_repo_config(language, repo_config_path)
+        generate_repo_config(language, repo_config_path, project_path=str(work_dir))
         repo_config_flag = f" --repository-configuration-file {_shell(repo_config_path)}"
 
     input_result = _pick_existing_result_input()
@@ -748,4 +748,3 @@ async def analyze_project(
     await job_queue.enqueue(job)
 
     return JSONResponse({"job_id": job_id})
-

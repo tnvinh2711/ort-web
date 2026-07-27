@@ -8,6 +8,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import urllib.request
@@ -20,10 +21,125 @@ from app.config import settings
 from app.features.jobs.log_stream import log_stream_hub
 
 GITHUB_LATEST_RELEASE = "https://api.github.com/repos/oss-review-toolkit/ort/releases/latest"
+WINDOWS_TYPECODE_LIBMAGIC_VERSION = "5.39.210531"
 
 
 class OrtInstallerError(RuntimeError):
     pass
+
+
+# ---------------------------------------------------------------------------
+# ScanCode libmagic detection & installation
+# ---------------------------------------------------------------------------
+
+def _libmagic_is_available() -> tuple[bool, str]:
+    """Check libmagic through the same TypeCode integration used by ScanCode."""
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from typecode import magic2; "
+                    "print(magic2.libmagic_version())"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception as exc:
+        return False, str(exc)
+    output = "\n".join(
+        part.strip() for part in (result.stdout, result.stderr) if part.strip()
+    )
+    return result.returncode == 0, output
+
+
+def _libmagic_install_command(system: str) -> list[str] | None:
+    """Return the preferred non-interactive libmagic install command."""
+    if system == "Darwin":
+        if brew := shutil.which("brew"):
+            return [brew, "install", "libmagic"]
+        if port := shutil.which("port"):
+            return [port, "install", "file"]
+        return None
+
+    if system == "Windows":
+        # This platform wheel bundles both the libmagic DLL and magic.mgc and
+        # exposes them through TypeCode's location-provider plugin.
+        return [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--only-binary=:all:",
+            f"typecode-libmagic=={WINDOWS_TYPECODE_LIBMAGIC_VERSION}",
+        ]
+
+    return None
+
+
+async def _ensure_libmagic(
+    log: Callable[[str], Awaitable[None]],
+) -> bool:
+    """Ensure ScanCode can load libmagic on macOS and Windows."""
+    available, details = await asyncio.to_thread(_libmagic_is_available)
+    if available:
+        version = details.splitlines()[0] if details else "available"
+        await log(f"libmagic found (TypeCode reports: {version}).")
+        return True
+
+    system = platform.system()
+    if system not in ("Darwin", "Windows"):
+        await log(
+            f"libmagic was not detected; automatic installation is not "
+            f"configured for {system}."
+        )
+        return False
+
+    command = _libmagic_install_command(system)
+    if command is None:
+        if system == "Darwin":
+            await log(
+                "Cannot auto-install libmagic: Homebrew or MacPorts is required."
+            )
+        return False
+
+    if system == "Windows":
+        await log(
+            "Installing the bundled libmagic DLL and database for ScanCode..."
+        )
+    else:
+        await log("Installing libmagic for ScanCode...")
+
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        line = raw.decode("utf-8", errors="replace").rstrip()
+        if line:
+            await log(line)
+    await proc.wait()
+    if proc.returncode != 0:
+        await log(f"libmagic install command failed with exit code {proc.returncode}.")
+        return False
+
+    available, details = await asyncio.to_thread(_libmagic_is_available)
+    if available:
+        version = details.splitlines()[0] if details else "available"
+        await log(f"libmagic installed successfully (TypeCode reports: {version}).")
+        return True
+
+    await log("libmagic was installed but ScanCode/TypeCode still cannot load it.")
+    if details:
+        await log(details[-600:])
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -469,8 +585,20 @@ async def install_ort_local(
         await log("--- Step 1: Checking Java ---")
         java_home = await _ensure_java_21(log)
 
-        # --- Step 2: Choose install directory ---
-        await log("--- Step 2: Preparing install directory ---")
+        # --- Step 2: Ensure ScanCode's native libmagic dependency ---
+        await log("--- Step 2: Checking ScanCode libmagic ---")
+        system = platform.system()
+        if system in ("Darwin", "Windows"):
+            if not await _ensure_libmagic(log):
+                raise OrtInstallerError(
+                    "ScanCode requires libmagic. Automatic installation failed; "
+                    "see the installer log for the required package manager."
+                )
+        else:
+            await _ensure_libmagic(log)
+
+        # --- Step 3: Choose install directory ---
+        await log("--- Step 3: Preparing install directory ---")
         target_dir = target_dir_override or settings.ort_install_dir
         await log(f"Install dir: {target_dir}")
 
@@ -483,8 +611,8 @@ async def install_ort_local(
             target_dir = fallback
             await asyncio.to_thread(_ensure_writable_dir, target_dir)
 
-        # --- Step 3: Fetch latest ORT release ---
-        await log("--- Step 3: Fetching ORT release info ---")
+        # --- Step 4: Fetch latest ORT release ---
+        await log("--- Step 4: Fetching ORT release info ---")
 
         def _fetch_release() -> dict:
             with urllib.request.urlopen(GITHUB_LATEST_RELEASE, timeout=30) as resp:
@@ -497,8 +625,8 @@ async def install_ort_local(
         asset_name = asset["name"]
         await log(f"Selected release: {asset_name}")
 
-        # --- Step 4: Download + extract + deploy ---
-        await log("--- Step 4: Downloading ORT ---")
+        # --- Step 5: Download + extract + deploy ---
+        await log("--- Step 5: Downloading ORT ---")
         with tempfile.TemporaryDirectory(prefix="ort-installer-") as tmp:
             tmp_dir = Path(tmp)
             archive_path = tmp_dir / asset_name
@@ -534,10 +662,10 @@ async def install_ort_local(
 
             await asyncio.to_thread(_download_with_progress)
 
-            await log("--- Step 5: Extracting archive ---")
+            await log("--- Step 6: Extracting archive ---")
             await asyncio.to_thread(_extract_archive, archive_path, extract_dir)
 
-            await log("--- Step 6: Deploying ORT ---")
+            await log("--- Step 7: Deploying ORT ---")
             source_bin = await asyncio.to_thread(_find_bin_dir, extract_dir)
             source_root = source_bin.parent
             await log(f"Deploying to: {target_dir / '.ort-dist' / 'current'}")
@@ -548,7 +676,7 @@ async def install_ort_local(
         if not launcher.exists():
             raise OrtInstallerError(f"Launcher not found after deploy: {launcher}")
 
-        await log("--- Step 7: Verifying ORT ---")
+        await log("--- Step 8: Verifying ORT ---")
         await asyncio.to_thread(_verify_ort_runtime, launcher, java_home)
 
         ort_path = str(launcher)
