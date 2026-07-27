@@ -17,7 +17,10 @@ from app.features.ort.installer import (
     _ensure_libmagic,
     _libmagic_install_command,
 )
-from app.features.ort.config import generate_repo_config
+from app.features.ort.config import (
+    _get_swift_unresolvable_definition_file_excludes,
+    generate_repo_config,
+)
 from app.features.ort.properties import (
     auto_generate_ort_properties,
     get_available_managers_for_language,
@@ -208,6 +211,39 @@ def test_swift_repo_config_skips_build_checkouts_only_for_git_worktrees(tmp_path
     generate_repo_config("swift", archive_config, project_path=str(archive_project))
 
     assert yaml.safe_load(archive_config.read_text(encoding="utf-8")) == {}
+
+
+def test_swift_repo_config_skips_only_unresolvable_definition_files(tmp_path):
+    project = tmp_path / "swift-project"
+    project.mkdir()
+    (project / ".git").mkdir()
+
+    local_package = project / "LocalPackages" / "PaymentKit"
+    local_package.mkdir(parents=True)
+    (local_package / "Package.swift").write_text(
+        '.package(path: "../AnalyticsKit")', encoding="utf-8"
+    )
+    (local_package / "Sources.swift").write_text("// first-party source", encoding="utf-8")
+
+    pods = project / "Examples"
+    pods.mkdir()
+    (pods / "Podfile").write_text("platform :ios, '15.0'", encoding="utf-8")
+
+    valid_pods = project / "App"
+    valid_pods.mkdir()
+    (valid_pods / "Podfile").write_text("platform :ios, '15.0'", encoding="utf-8")
+    (valid_pods / "Podfile.lock").write_text("PODS:", encoding="utf-8")
+
+    patterns = {
+        entry["pattern"]
+        for entry in _get_swift_unresolvable_definition_file_excludes(str(project))
+    }
+    assert patterns == {"LocalPackages/PaymentKit/Package.swift", "Examples/Podfile"}
+
+    config_path = tmp_path / "repo-config.yml"
+    generate_repo_config("swift", config_path, project_path=str(project))
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert patterns.issubset({entry["pattern"] for entry in data["excludes"]["paths"]})
 
 
 def test_swift_local_path_precheck_ignores_build_checkouts(tmp_path):

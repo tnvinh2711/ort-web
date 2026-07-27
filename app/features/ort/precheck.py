@@ -203,9 +203,10 @@ async def _check_package_managers_for_workdir(
                 job_id,
                 log_file,
                 "[precheck] WARN Swift local path dependencies found in "
-                f"{paths}{more}. ORT SwiftPM may report "
-                "MalformedPackageURLException for .package(path: ...); "
-                "the local source remains covered by ScanCode and Trivy.\n",
+                f"{paths}{more}. Their Package.swift files will be skipped by "
+                "the ORT dependency analyzer because ORT cannot map "
+                ".package(path: ...) to a PackageURL; local source remains "
+                "covered by ScanCode and Trivy.\n",
             )
 
 

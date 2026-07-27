@@ -21,7 +21,7 @@ WonSample/AppDelegate.swift
 |---|---|---|---|
 | Xcode-level remote deps | `.xcodeproj/…/swiftpm/Package.resolved` | ✅ | ✅ |
 | Local package's deps, `Package.resolved` present | local `Package.resolved` | ✅ | ✅ |
-| Local file-system package dependency | `.package(path: "../AnalyticsKit")` | manifest found; see limitation below | source-only |
+| Local file-system package dependency | `.package(path: "../AnalyticsKit")` | source scan; manifest skipped by analyzer | source-only |
 | Local package's remote deps, only a manifest | local `Package.swift` | ✅ (runs `swift`) | ❌ |
 | The local package's own source | — | listed as a project, no CVE data | ❌ |
 
@@ -48,8 +48,8 @@ from the `advise` step (OSV).
 Current ORT SwiftPM versions try to convert the absolute URL returned by
 `swift package show-dependencies` for `.package(path: ...)` into a PackageURL
 and report `MalformedPackageURLException`. OSS Guard warns about this during
-precheck. The local manifest is still discovered as a first-party project, and
-its source remains covered by ScanCode and Trivy. Versioned remote dependencies
+precheck and excludes only that `Package.swift` from ORT's dependency analyzer.
+Its source remains covered by ScanCode and Trivy. Versioned remote dependencies
 should have a `Package.resolved`, which Trivy can scan even when this ORT issue
 is present.
 

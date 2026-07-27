@@ -1,6 +1,8 @@
 """Service for generating ORT config.yml and repository .ort.yml configuration."""
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -183,6 +185,69 @@ def _is_in_git_work_tree(project_path: Optional[str]) -> bool:
     return any((candidate / ".git").exists() for candidate in (current, *current.parents))
 
 
+def _get_swift_unresolvable_definition_file_excludes(
+    project_path: Optional[str],
+) -> list[dict[str, str]]:
+    """Return SwiftPM / CocoaPods definition files ORT cannot resolve safely.
+
+    SwiftPM returns absolute filesystem URLs for ``.package(path: ...)``.
+    Current ORT releases cannot convert these to a valid PackageURL. CocoaPods
+    explicitly does not support a Podfile without its lockfile. Skipping only
+    those definition files avoids analyzer errors while the first-party source
+    remains covered by repository-level ScanCode and by Trivy.
+    """
+    if not project_path:
+        return []
+
+    root = Path(project_path).resolve()
+    if not root.is_dir():
+        return []
+
+    local_path_pattern = re.compile(
+        r"\.package\s*\(\s*(?:name\s*:\s*[^,]+,\s*)?path\s*:",
+        re.DOTALL,
+    )
+    prune_dirs = {
+        ".build", ".git", ".gradle", ".idea", ".venv", ".vscode",
+        "DerivedData", "build", "dist", "node_modules", "target", "venv",
+    }
+    excludes: list[dict[str, str]] = []
+
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [directory for directory in dirs if directory not in prune_dirs]
+        current = Path(current_root)
+
+        if "Package.swift" in files:
+            manifest = current / "Package.swift"
+            try:
+                content = manifest.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                content = ""
+            if local_path_pattern.search(content):
+                excludes.append(
+                    {
+                        "pattern": manifest.relative_to(root).as_posix(),
+                        "reason": "OTHER",
+                        "comment": (
+                            "SwiftPM local path dependency: ORT cannot map its "
+                            "filesystem URL to a PackageURL"
+                        ),
+                    }
+                )
+
+        if "Podfile" in files and not (current / "Podfile.lock").is_file():
+            podfile = current / "Podfile"
+            excludes.append(
+                {
+                    "pattern": podfile.relative_to(root).as_posix(),
+                    "reason": "OTHER",
+                    "comment": "CocoaPods analysis requires a sibling Podfile.lock",
+                }
+            )
+
+    return excludes
+
+
 def _refine_managers_for_project(managers: list[str], project_path: Optional[str]) -> list[str]:
     """Narrow down package managers based on actual definition files in the project."""
     if not project_path:
@@ -309,6 +374,8 @@ def generate_repo_config(
 
     config: dict = {}
     excludes = _get_excludes_for_language(language)
+    if language == "swift":
+        excludes.extend(_get_swift_unresolvable_definition_file_excludes(project_path))
     if excludes and _is_in_git_work_tree(project_path):
         config = {
             "analyzer": {
