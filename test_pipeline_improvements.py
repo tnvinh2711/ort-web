@@ -10,18 +10,21 @@ import yaml
 import app.features.jobs.queue as job_queue
 import app.features.trivy.scanner as trivy_scanner
 import app.features.ort.installer as ort_installer
+import app.features.ort.java_runtime as java_runtime
 from app.config import Settings
 from app.models import Job
 from app.features.jobs.store import JobStore
 from app.features.jobs.queue import _advise_input, _run_post_analyze_pipeline
 from app.features.dashboard.router import _scan_mode_flags
 from app.features.ort.env_installer import detect_install_tasks
-from app.features.ort.executor import _build_ort_env
+from app.features.ort.executor import _build_ort_env, _ort_executable_candidates
 from app.features.ort.installer import (
     WINDOWS_TYPECODE_LIBMAGIC_VERSION,
+    _deploy_distribution,
     _ensure_libmagic,
     _libmagic_install_command,
 )
+from app.features.ort.java_runtime import apply_java_runtime, resolve_java_home
 from app.features.ort.config import (
     _get_swift_unresolvable_definition_file_excludes,
     generate_repo_config,
@@ -64,6 +67,94 @@ def test_gradle_cache_and_no_duplicate_warmup(tmp_path, monkeypatch):
 
     assert not any(t["label"].startswith("gradle") for t in detect_install_tasks(str(project)))
     assert "Gradle" in get_available_managers_for_language("java", str(project))
+
+
+def _fake_java_home(root: Path, version: str) -> Path:
+    java = root / "bin" / ("java.exe" if os.name == "nt" else "java")
+    java.parent.mkdir(parents=True)
+    if os.name == "nt":
+        java.write_text(f'@echo off\r\necho openjdk version "{version}" 1>&2\r\n')
+    else:
+        java.write_text(
+            f'#!/bin/sh\necho \'openjdk version "{version}"\' >&2\n',
+            encoding="utf-8",
+        )
+        java.chmod(0o755)
+    return root
+
+
+def test_java_runtime_selection_is_shared_and_overridable(tmp_path):
+    java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
+    java26 = _fake_java_home(tmp_path / "jdk-26", "26.0.1")
+
+    path_only = {"PATH": str(java21 / "bin")}
+    assert resolve_java_home(path_only) == java21.resolve()
+
+    java_home_wins = {"JAVA_HOME": str(java26), "PATH": str(java21 / "bin")}
+    assert resolve_java_home(java_home_wins) == java26.resolve()
+
+    app_override_wins = {
+        "ORT_WEB_JAVA_HOME": str(java21),
+        "JAVA_HOME": str(java26),
+        "PATH": str(java26 / "bin"),
+    }
+    assert apply_java_runtime(app_override_wins) == java21.resolve()
+    assert app_override_wins["JAVA_HOME"] == str(java21.resolve())
+    assert app_override_wins["PATH"].split(os.pathsep)[0] == str(
+        java21.resolve() / "bin"
+    )
+
+
+def test_macos_java_stub_resolves_real_jdk_home(tmp_path, monkeypatch):
+    java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
+    monkeypatch.setattr(java_runtime.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(java_runtime.shutil, "which", lambda *_args, **_kwargs: "/usr/bin/java")
+    monkeypatch.setattr(
+        java_runtime.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=str(java21),
+        ),
+    )
+
+    assert resolve_java_home({"PATH": "/usr/bin"}) == java21.resolve()
+
+
+def test_ort_env_uses_the_same_configured_java_home(tmp_path, monkeypatch):
+    java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
+    java26 = _fake_java_home(tmp_path / "jdk-26", "26.0.1")
+    monkeypatch.setenv("ORT_WEB_JAVA_HOME", str(java21))
+    monkeypatch.setenv("JAVA_HOME", str(java26))
+
+    env = _build_ort_env()
+    assert env["JAVA_HOME"] == str(java21.resolve())
+    assert env["PATH"].split(os.pathsep)[0] == str(java21.resolve() / "bin")
+
+
+def test_ort_executor_prefers_real_distribution_launcher():
+    candidates = _ort_executable_candidates()
+    assert candidates
+    assert ".ort-dist" in candidates[0].parts
+    assert candidates[0].parent.name == "bin"
+
+
+def test_installed_ort_launcher_respects_existing_java_home(tmp_path):
+    source = tmp_path / "source"
+    source_bin = source / "bin"
+    source_bin.mkdir(parents=True)
+    source_launcher = source_bin / ("ort.bat" if os.name == "nt" else "ort")
+    source_launcher.write_text("echo ORT\n", encoding="utf-8")
+    source_launcher.chmod(0o755)
+    java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
+
+    launcher, _ = _deploy_distribution(source, tmp_path / "target", java21)
+    content = launcher.read_text(encoding="utf-8")
+    if os.name == "nt":
+        assert "if not defined JAVA_HOME" in content
+    else:
+        assert '${JAVA_HOME:=' in content
+    assert str(java21) in content
 
 
 def test_scan_modes_are_mutually_exclusive():

@@ -12,6 +12,7 @@ from typing import Optional
 from app.config import settings
 from app.features.jobs.event_contract import EVENT_LOG, make_event
 from app.features.jobs.log_stream import log_stream_hub
+from app.features.ort.java_runtime import apply_java_runtime
 
 
 async def _log(job_id: str, log_file: Path, line: str) -> None:
@@ -37,21 +38,24 @@ def _find_ort_binary() -> Optional[str]:
     return found
 
 
-def _check_java() -> tuple[bool, Optional[str]]:
-    """Return (available, version_line).  version_line may be None on error."""
-    java = shutil.which("java")
-    if not java:
-        return False, None
+def _check_java() -> tuple[bool, Optional[str], Optional[str]]:
+    """Return (available, version_line, java_home) for ORT's selected runtime."""
+    env = os.environ.copy()
+    java_home = apply_java_runtime(env)
+    if not java_home:
+        return False, None, None
+    java = java_home / "bin" / ("java.exe" if os.name == "nt" else "java")
     try:
         result = subprocess.run(
-            [java, "-version"],
+            [str(java), "-version"],
             capture_output=True, text=True, timeout=10, check=False,
+            env=env,
         )
         # `java -version` writes to stderr on most JDKs
         out = (result.stderr or result.stdout or "").strip().splitlines()
-        return True, out[0] if out else "version unknown"
+        return True, out[0] if out else "version unknown", str(java_home)
     except Exception:
-        return True, None
+        return True, None, str(java_home)
 
 
 def _find_tool(detect_commands: list[str]) -> Optional[str]:
@@ -246,9 +250,14 @@ async def run_environment_precheck(
         critical_ok = False
 
     # 2. Java
-    java_found, java_version = _check_java()
+    java_found, java_version, java_home = _check_java()
     if java_found:
-        await _log(job_id, log_file, f"[precheck] OK   Java: {java_version or 'version unknown'}\n")
+        await _log(
+            job_id,
+            log_file,
+            f"[precheck] OK   Java: {java_version or 'version unknown'} "
+            f"(JAVA_HOME: {java_home})\n",
+        )
     else:
         await _log(
             job_id, log_file,

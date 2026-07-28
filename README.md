@@ -234,6 +234,10 @@ misidentified as projects of the parent repository.
 
 Gradle wrapper distributions, Tooling API downloads, and dependencies are cached persistently in `runtime/.gradle`. Override the path with `ORT_WEB_GRADLE_USER_HOME`. The first run, changed wrapper versions, dynamic dependencies, toolchains, or refreshed metadata can still download; unchanged later runs reuse the cache. OSS Guard no longer runs a separate `runtimeClasspath` warm-up before ORT.
 
+### Java runtime
+
+The pre-flight check and ORT use the same Java runtime. Selection order is `ORT_WEB_JAVA_HOME`, a valid `JAVA_HOME`, then `java` on `PATH`. Set `ORT_WEB_JAVA_HOME` when OSS Guard must use a specific JDK without changing the rest of the machine. Java 21 LTS is preferred during automatic installation.
+
 ### Job History
 
 Navigate to **"Job History"** in the sidebar to browse all past jobs with:

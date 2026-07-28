@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from app.config import settings
+from app.features.ort.java_runtime import apply_java_runtime
 from app.features.jobs.log_stream import log_stream_hub
 
 
@@ -90,7 +91,32 @@ def _build_ort_env() -> dict[str, str]:
     if venv_bin.is_dir():
         extra_paths.append(str(venv_bin))
     env["PATH"] = os.pathsep.join(extra_paths) + os.pathsep + env.get("PATH", "")
+    apply_java_runtime(env)
     return env
+
+
+def _ort_executable_candidates() -> list[Path]:
+    """Return launchers in order, preferring the distribution's real script.
+
+    Older generated wrapper scripts may contain an embedded JAVA_HOME. Calling
+    the real launcher lets the normalized executor environment remain the
+    single source of truth.
+    """
+    if os.name == "nt":
+        return [
+            settings.ort_install_dir / ".ort-dist" / "current" / "bin" / "ort.bat",
+            settings.bin_dir / ".ort-dist" / "current" / "bin" / "ort.bat",
+            settings.ort_install_dir / "ort.bat",
+            settings.bin_dir / "ort.bat",
+        ]
+    return [
+        settings.ort_install_dir / ".ort-dist" / "current" / "bin" / "ort",
+        Path.home() / ".local" / "bin" / ".ort-dist" / "current" / "bin" / "ort",
+        settings.bin_dir / ".ort-dist" / "current" / "bin" / "ort",
+        settings.ort_install_dir / "ort",
+        Path.home() / ".local" / "bin" / "ort",
+        settings.bin_dir / "ort",
+    ]
 
 
 async def run_ort_command(
@@ -122,19 +148,8 @@ async def run_ort_command(
     # stale system binary (e.g. an x86_64 Homebrew ort on Apple Silicon) and
     # so installs that fell back to ~/.local/bin are found even when that
     # directory is not in PATH.
-    if os.name == "nt":
-        _ort_candidates = [
-            settings.ort_install_dir / "ort.bat",
-            settings.bin_dir / "ort.bat",
-        ]
-    else:
-        _ort_candidates = [
-            settings.ort_install_dir / "ort",
-            Path.home() / ".local" / "bin" / "ort",
-            settings.bin_dir / "ort",
-        ]
     executable = next(
-        (str(c) for c in _ort_candidates if c.exists()),
+        (str(candidate) for candidate in _ort_executable_candidates() if candidate.exists()),
         "ort",  # fallback: let the OS resolve via PATH
     )
 

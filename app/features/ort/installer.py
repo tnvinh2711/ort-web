@@ -178,25 +178,44 @@ def _find_java_21_home() -> Path | None:
             return result
 
     if system == "Darwin":
-        # /usr/libexec/java_home -v 21+
-        try:
-            r = subprocess.run(
-                ["/usr/libexec/java_home", "-v", "21+"],
-                capture_output=True, text=True, timeout=5, check=False,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                result = _check(Path(r.stdout.strip()))
-                if result:
-                    return result
-        except Exception:
-            pass
-
-        # Homebrew openjdk@21
+        # Prefer the supported LTS release over a newer JDK. Asking
+        # /usr/libexec/java_home for "21+" can otherwise select e.g. Java 26.
         for prefix in ("/opt/homebrew", "/usr/local"):
             home = Path(prefix) / "opt" / "openjdk@21" / "libexec" / "openjdk.jdk" / "Contents" / "Home"
             result = _check(home)
             if result:
                 return result
+
+        # /usr/libexec/java_home -v 21, then fall back to any Java 21+.
+        for version_selector in ("21", "21+"):
+            try:
+                r = subprocess.run(
+                    ["/usr/libexec/java_home", "-v", version_selector],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    result = _check(Path(r.stdout.strip()))
+                    if result:
+                        return result
+            except Exception:
+                pass
+
+        # Generic Homebrew openjdk, if it is still compatible.
+        try:
+            brew = shutil.which("brew")
+            if brew:
+                r = subprocess.run(
+                    [brew, "--prefix", "openjdk"],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    result = _check(
+                        Path(r.stdout.strip()) / "libexec" / "openjdk.jdk" / "Contents" / "Home"
+                    )
+                    if result:
+                        return result
+        except Exception:
+            pass
 
     elif system == "Linux":
         for pattern in [
@@ -471,7 +490,10 @@ def _deploy_distribution(
     java_home: Path | None = None,
 ) -> tuple[Path, Path]:
     """
-    Deploy ORT distribution and create a launcher that embeds JAVA_HOME if provided.
+    Deploy ORT and create a launcher with a fallback JAVA_HOME.
+
+    An existing JAVA_HOME is always respected so the launcher cannot silently
+    switch to a different runtime than the web precheck and executor.
     Returns (launcher_path, install_home).
     """
     install_home = target_bin_dir / ".ort-dist" / "current"
@@ -491,7 +513,7 @@ def _deploy_distribution(
     if os.name == "nt":
         launcher = target_bin_dir / "ort.bat"
         java_lines = (
-            f'set "JAVA_HOME={java_home}"\r\n'
+            f'if not defined JAVA_HOME set "JAVA_HOME={java_home}"\r\n'
             f'set "PATH=%JAVA_HOME%\\bin;%PATH%"\r\n'
             if java_home else ""
         )
@@ -504,7 +526,8 @@ def _deploy_distribution(
     else:
         launcher = target_bin_dir / "ort"
         java_lines = (
-            f'export JAVA_HOME="{java_home}"\n'
+            f': "${{JAVA_HOME:={java_home}}}"\n'
+            'export JAVA_HOME\n'
             f'export PATH="$JAVA_HOME/bin:$PATH"\n'
             if java_home else ""
         )
@@ -684,7 +707,7 @@ async def install_ort_local(
         await log(f"Launcher: {launcher}")
         await log(f"Install home: {install_home}")
         if java_home:
-            await log(f"JAVA_HOME embedded in launcher: {java_home}")
+            await log(f"JAVA_HOME fallback in launcher: {java_home}")
         return 0, ort_path
 
     except Exception as exc:
