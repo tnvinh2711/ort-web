@@ -8,6 +8,7 @@ from typing import Optional
 
 import yaml
 
+from app.config import settings
 from app.features.shared.language_detector import get_package_manager_categories
 from app.features.ort.properties import get_managers_for_language
 
@@ -398,17 +399,41 @@ def generate_repo_config(
     )
 
     config: dict = {}
-    excludes = _get_excludes_for_language(language)
+    path_excludes = _get_excludes_for_language(language)
     if language == "swift":
-        excludes.extend(_get_swift_unresolvable_definition_file_excludes(project_path))
-    if excludes and _is_in_git_work_tree(project_path):
+        path_excludes.extend(
+            _get_swift_unresolvable_definition_file_excludes(project_path)
+        )
+    if not _is_in_git_work_tree(project_path):
+        path_excludes = []
+
+    scope_excludes: list[dict[str, str]] = []
+    if (
+        "nodejs" in get_package_manager_categories(language)
+        and not settings.npm_include_dev
+    ):
+        scope_excludes.append(
+            {
+                "pattern": "devDependencies",
+                "reason": "DEV_DEPENDENCY_OF",
+                "comment": (
+                    "Development-only packages are omitted to keep ORT's NPM "
+                    "dependency graph within the configured JVM memory limit"
+                ),
+            }
+        )
+
+    if path_excludes or scope_excludes:
+        exclude_config: dict[str, list[dict[str, str]]] = {}
+        if path_excludes:
+            exclude_config["paths"] = path_excludes
+        if scope_excludes:
+            exclude_config["scopes"] = scope_excludes
         config = {
             "analyzer": {
                 "skip_excluded": True,
             },
-            "excludes": {
-                "paths": excludes,
-            },
+            "excludes": exclude_config,
         }
 
     yaml_body = yaml.dump(

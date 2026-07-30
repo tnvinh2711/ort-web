@@ -100,6 +100,11 @@ def _build_ort_env(ort_launcher: str | Path | None = None) -> dict[str, str]:
     env.setdefault("NPM_CONFIG_AUDIT", "false")
     env.setdefault("NPM_CONFIG_FUND", "false")
     env.setdefault("NPM_CONFIG_PROGRESS", "false")
+    if not settings.npm_include_dev:
+        # ORT runs npm ci followed by npm list --depth Infinity --json --long.
+        # Omitting packages used only for development keeps that intermediate
+        # tree small enough for the JVM analyzer on large front-end projects.
+        env.setdefault("NPM_CONFIG_OMIT", "dev")
     # Pin Gradle's wrapper distributions, dependency cache, and Tooling API
     # downloads to stable storage shared across analyze jobs.
     env.setdefault("GRADLE_USER_HOME", str(settings.gradle_user_home_dir))
@@ -224,6 +229,17 @@ async def run_ort_command(
             await _write(
                 f"[info] ORT JVM max heap: {_java_heap_option(settings.ort_java_max_heap)}\n"
             )
+        if (Path(work_dir) / "package.json").is_file():
+            omitted = {
+                value.strip().lower()
+                for value in env.get("NPM_CONFIG_OMIT", "").split(",")
+                if value.strip()
+            }
+            if "dev" in omitted:
+                await _write(
+                    "[info] NPM memory optimization: devDependencies are omitted "
+                    "(set ORT_WEB_NPM_INCLUDE_DEV=1 to include them).\n"
+                )
 
         while True:
             elapsed = _time.monotonic() - start_time

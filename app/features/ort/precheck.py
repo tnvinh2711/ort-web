@@ -142,6 +142,7 @@ async def _check_package_managers_for_workdir(
 ) -> None:
     """Detect project language and warn about missing package manager tools."""
     from app.features.shared.language_detector import detect_language
+    from app.features.ort.config import _refine_managers_for_project
     from app.features.ort.properties import PACKAGE_MANAGERS, get_managers_for_language
 
     language: Optional[str] = await asyncio.to_thread(detect_language, work_dir)
@@ -155,7 +156,12 @@ async def _check_package_managers_for_workdir(
 
     await _log(job_id, log_file, f"[precheck] Detected language: {language}\n")
 
-    needed = set(get_managers_for_language(language))
+    needed = set(
+        _refine_managers_for_project(
+            get_managers_for_language(language),
+            work_dir,
+        )
+    )
     if not needed:
         await _log(
             job_id, log_file,

@@ -290,6 +290,28 @@ def test_ort_env_sets_configured_max_heap(monkeypatch):
     assert "-Dfile.encoding=UTF-8" in java_opts
 
 
+def test_ort_env_omits_npm_dev_dependencies_by_default(monkeypatch):
+    monkeypatch.delenv("NPM_CONFIG_OMIT", raising=False)
+    monkeypatch.setattr(
+        ort_executor,
+        "settings",
+        replace(ort_executor.settings, npm_include_dev=False),
+    )
+
+    assert _build_ort_env()["NPM_CONFIG_OMIT"] == "dev"
+
+
+def test_ort_env_can_include_npm_dev_dependencies(monkeypatch):
+    monkeypatch.delenv("NPM_CONFIG_OMIT", raising=False)
+    monkeypatch.setattr(
+        ort_executor,
+        "settings",
+        replace(ort_executor.settings, npm_include_dev=True),
+    )
+
+    assert "NPM_CONFIG_OMIT" not in _build_ort_env()
+
+
 def test_analyze_environment_skips_duplicate_node_install(tmp_path, monkeypatch):
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     log_file = tmp_path / "install.log"
@@ -372,6 +394,21 @@ def test_node_repo_config_excludes_generated_and_agent_worktrees(tmp_path):
         "**/.claude/worktrees/**",
         "**/.codex/worktrees/**",
     }.issubset(patterns)
+    assert data["analyzer"]["skip_excluded"] is True
+    assert data["excludes"]["scopes"][0]["pattern"] == "devDependencies"
+    assert data["excludes"]["scopes"][0]["reason"] == "DEV_DEPENDENCY_OF"
+
+
+def test_node_repo_config_omits_dev_scope_even_without_git(tmp_path):
+    project = tmp_path / "node-archive"
+    project.mkdir()
+    config_path = tmp_path / "node-repo-config.yml"
+
+    generate_repo_config("typescript", config_path, project_path=str(project))
+
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert "paths" not in data["excludes"]
+    assert data["excludes"]["scopes"][0]["pattern"] == "devDependencies"
 
 
 def test_libmagic_install_commands_for_macos_and_windows(monkeypatch):

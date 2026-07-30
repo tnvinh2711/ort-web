@@ -32,6 +32,14 @@ class Settings:
     # ergonomics can select a value that is too small for large npm lockfiles
     # (commonly 4 GiB on a 16 GiB machine). Keep this explicit and configurable.
     ort_java_max_heap: str = os.environ.get("ORT_WEB_JAVA_MAX_HEAP", "12g").strip()
+    # ORT's NPM analyzer expands npm's dependency tree into JVM objects. Large
+    # front-end devDependency graphs can exhaust even a 12 GiB heap, while the
+    # vulnerability pipeline already targets deployable production packages.
+    # Set ORT_WEB_NPM_INCLUDE_DEV=1 only when development dependencies must be
+    # included and the machine has enough memory.
+    npm_include_dev: bool = (
+        os.environ.get("ORT_WEB_NPM_INCLUDE_DEV", "0").strip() == "1"
+    )
 
     @property
     def jobs_db_path(self) -> Path:

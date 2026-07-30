@@ -256,6 +256,13 @@ machine has a different memory budget. Analyze jobs do not run a redundant
 Node.js project install before ORT; ORT resolves dependencies once and reuses
 the persistent npm download cache under `runtime/.npm-cache`.
 
+For NPM projects, development-only dependencies are omitted by default from
+both npm's installed tree and ORT's analyzed scopes. This prevents large
+front-end toolchains from exhausting the JVM heap while keeping production
+dependencies covered. Set `ORT_WEB_NPM_INCLUDE_DEV=1` before launching the web
+app to include `devDependencies`; full development scans may require a larger
+`ORT_WEB_JAVA_MAX_HEAP`.
+
 ### Job History
 
 Navigate to **"Job History"** in the sidebar to browse all past jobs with:
