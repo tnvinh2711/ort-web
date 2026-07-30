@@ -585,11 +585,18 @@ async def install_environment(
     job_id: str,
     work_dir: str,
     log_file: Path,
+    *,
+    node_tool_only: bool = False,
 ) -> int:
     """
     For each package manager detected in *work_dir*:
       1. If the tool is missing, auto-install it.
       2. Run the project-level install command.
+
+    ``node_tool_only`` is used before ORT analyze. ORT's NPM / Yarn / pnpm
+    analyzers perform their own clean dependency resolution, so running a
+    project install immediately beforehand only duplicates work and network
+    access. In that mode we still ensure the required executable exists.
 
     Returns 0 if all non-optional steps succeed, 1 otherwise.
     """
@@ -655,6 +662,13 @@ async def install_environment(
 
         # Replace placeholder binary in project_cmd with resolved path
         cmd = [tool_path if i == 0 else arg for i, arg in enumerate(proj_cmd)]
+
+        if node_tool_only and tool_cmds[0] in ("npm", "pnpm", "yarn", "corepack"):
+            await log_fn(
+                "[env-install] Tool available; project install skipped because "
+                "ORT will resolve Node.js dependencies once during analysis.\n"
+            )
+            continue
 
         # 2. Run project-level install
         # For Node.js package managers, pin NPM_CONFIG_CACHE to the shared

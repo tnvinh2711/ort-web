@@ -255,13 +255,26 @@ async def _run_post_analyze_pipeline(
     else:
         # Guard against corrupt cache before invoking ORT.
         await _heal_scancode_cache(job_id, log_file)
+        # Scanning every dependency provenance is prohibitively expensive for
+        # large Node.js graphs (often 1,000+ separate downloads and ScanCode
+        # invocations). Their declared licenses are already available from the
+        # analyzer and Trivy performs a full license pass over installed source.
+        # Keep package scanning for Swift, where dependency source scanning is
+        # required to recover license data that Swift manifests do not declare.
+        package_types = "" if swift_license_scan else " --package-types PROJECT"
         scan_cmd = (
             f"ort -P ort.forceOverwrite=true scan "
             f"-i {shlex.quote(str(analyzer_result))} "
             f"-o {shlex.quote(str(output_dir))} "
             f"--scanners ScanCode"
+            f"{package_types}"
         )
-        await _log_info(job_id, log_file, "Running Scanner (ScanCode)...")
+        scan_scope = "projects and packages" if swift_license_scan else "project source only"
+        await _log_info(
+            job_id,
+            log_file,
+            f"Running Scanner (ScanCode, {scan_scope})...",
+        )
         scan_exit = await run_ort_command(job_id, scan_cmd, job.work_dir, log_file)
         if scan_exit != 0:
             await _log_info(job_id, log_file, "Scanner step failed — continuing without scan results.")
@@ -609,7 +622,12 @@ class JobQueue:
                         job.job_id, log_file,
                         "Preparing project dependencies..."
                     )
-                    await install_environment(job.job_id, job.work_dir, log_file)
+                    await install_environment(
+                        job.job_id,
+                        job.work_dir,
+                        log_file,
+                        node_tool_only=True,
+                    )
 
                     # Re-generate ort.properties now that env_installer may have
                     # installed new tools (e.g. conan, maven, poetry).  ORT throws
@@ -626,12 +644,11 @@ class JobQueue:
                             f"ort.properties updated with available tools: {updated}"
                         )
 
-                # ORT's DirectoryStash calls Files.move() on existing node_modules
-                # before running npm install.  On Windows this raises
-                # AccessDeniedException for large/deep directories.  Removing
-                # node_modules upfront means ORT skips the stash and does a
-                # fresh install from cache (~seconds) without crashing.
-                if "analyze" in _pre_tokens:
+                # ORT's DirectoryStash can hit AccessDeniedException for
+                # large/deep node_modules trees on Windows. Keep the workaround
+                # Windows-only; deleting dependencies on macOS/Linux needlessly
+                # forces a fresh install on every analysis.
+                if "analyze" in _pre_tokens and os.name == "nt":
                     _wd = Path(job.work_dir)
                     for _nm in _wd.rglob("node_modules"):
                         if _nm.is_dir() and "node_modules" not in _nm.relative_to(_wd).parent.parts:

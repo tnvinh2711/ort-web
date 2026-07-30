@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
@@ -69,9 +70,29 @@ _HEARTBEAT_INTERVAL = 60   # seconds between "still running" log lines
 _READLINE_TIMEOUT   = 60   # seconds to wait for a single line before heartbeat
 
 
+def _java_heap_option(value: str) -> str:
+    """Return a validated -Xmx option, accepting friendly values like 12GB."""
+    normalized = value.strip().lower()
+    if normalized.endswith("gb"):
+        normalized = normalized[:-2] + "g"
+    elif normalized.endswith("mb"):
+        normalized = normalized[:-2] + "m"
+    if not re.fullmatch(r"[1-9]\d*[kmg]", normalized):
+        raise OrtExecutionError(
+            "ORT_WEB_JAVA_MAX_HEAP must be a positive size such as 8192m or 12g."
+        )
+    return f"-Xmx{normalized}"
+
+
 def _build_ort_env() -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault("LC_ALL", "en_US.UTF-8")
+    # The ORT launcher consumes JAVA_OPTS. Append our value so it wins over an
+    # inherited -Xmx while preserving unrelated caller-provided JVM flags.
+    if settings.ort_java_max_heap:
+        java_opts = env.get("JAVA_OPTS", "").strip()
+        heap_opt = _java_heap_option(settings.ort_java_max_heap)
+        env["JAVA_OPTS"] = f"{java_opts} {heap_opt}".strip()
     # Speed up npm installs that ORT runs internally: prefer the local cache,
     # skip network audit and funding checks, suppress interactive prompts.
     env.setdefault("NPM_CONFIG_CACHE", str(settings.npm_cache_dir))
@@ -199,6 +220,11 @@ async def run_ort_command(
             out.write(text)
             out.flush()
             await log_stream_hub.publish(job_id, {"type": "log", "line": text})
+
+        if settings.ort_java_max_heap:
+            await _write(
+                f"[info] ORT JVM max heap: {_java_heap_option(settings.ort_java_max_heap)}\n"
+            )
 
         while True:
             elapsed = _time.monotonic() - start_time

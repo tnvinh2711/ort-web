@@ -28,6 +28,10 @@ class Settings:
     # npm install for large projects can run 10-20 min; default gives headroom.
     # Override with ORT_WEB_JOB_TIMEOUT env var.
     ort_job_timeout_seconds: int = int(os.environ.get("ORT_WEB_JOB_TIMEOUT", "1800"))
+    # ORT's generated launcher does not set a maximum Java heap, so the JVM
+    # ergonomics can select a value that is too small for large npm lockfiles
+    # (commonly 4 GiB on a 16 GiB machine). Keep this explicit and configurable.
+    ort_java_max_heap: str = os.environ.get("ORT_WEB_JAVA_MAX_HEAP", "12g").strip()
 
     @property
     def jobs_db_path(self) -> Path:

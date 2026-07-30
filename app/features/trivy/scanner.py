@@ -30,6 +30,29 @@ _READLINE_TIMEOUT = 60
 
 _SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
 
+# Generated dependencies, build output, and nested agent worktrees can account
+# for nearly all files in a frontend repository. Their lockfiles / first-party
+# source remain in scope, while scanning these trees duplicates work and can
+# turn a seconds-long Trivy pass into many minutes.
+_SKIP_DIR_PATTERNS = (
+    "**/.git",
+    "**/node_modules",
+    "**/.next",
+    "**/.turbo",
+    "**/dist",
+    "**/out",
+    "**/.claude/worktrees",
+    "**/.codex/worktrees",
+)
+
+
+def _skip_dir_tokens() -> list[str]:
+    return [
+        token
+        for pattern in _SKIP_DIR_PATTERNS
+        for token in ("--skip-dirs", pattern)
+    ]
+
 
 def _make_log_fn(job_id: str, log_file: Path):
     async def _fn(line: str) -> None:
@@ -164,6 +187,7 @@ async def run_trivy_scan(
             "--scanners", settings.trivy_scanners, "--no-progress",
             "--format", "json", "--output", str(json_out),
         ]
+        tokens += _skip_dir_tokens()
         if settings.trivy_severity.strip():
             tokens += ["--severity", settings.trivy_severity]
         if settings.trivy_offline:
@@ -203,6 +227,7 @@ async def run_trivy_scan(
             "--format", "json",
             "--output", str(license_out),
         ]
+        license_tokens += _skip_dir_tokens()
         # License scanning is source-only; vulnerability DB/offline flags do not apply.
         license_tokens += [str(target)]
         await log_fn(

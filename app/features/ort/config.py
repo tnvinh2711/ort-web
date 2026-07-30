@@ -60,9 +60,34 @@ LANGUAGE_EXCLUDES: dict[str, list[dict[str, str]]] = {
             "comment": "Node.js dependencies (managed by package manager)",
         },
         {
+            "pattern": "**/.next/**",
+            "reason": "BUILD_TOOL_OF",
+            "comment": "Next.js generated build and development output",
+        },
+        {
+            "pattern": "**/.turbo/**",
+            "reason": "BUILD_TOOL_OF",
+            "comment": "Turborepo generated cache",
+        },
+        {
             "pattern": "**/dist/**",
             "reason": "BUILD_TOOL_OF",
             "comment": "Build output",
+        },
+        {
+            "pattern": "**/out/**",
+            "reason": "BUILD_TOOL_OF",
+            "comment": "Generated static build output",
+        },
+        {
+            "pattern": "**/.claude/worktrees/**",
+            "reason": "OTHER",
+            "comment": "Nested Claude agent Git worktrees duplicate the source project",
+        },
+        {
+            "pattern": "**/.codex/worktrees/**",
+            "reason": "OTHER",
+            "comment": "Nested Codex agent Git worktrees duplicate the source project",
         },
     ],
     "go": [

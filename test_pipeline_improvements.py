@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,13 +11,14 @@ import yaml
 import app.features.jobs.queue as job_queue
 import app.features.trivy.scanner as trivy_scanner
 import app.features.ort.installer as ort_installer
+import app.features.ort.executor as ort_executor
 import app.features.ort.java_runtime as java_runtime
 from app.config import Settings
 from app.models import Job
 from app.features.jobs.store import JobStore
 from app.features.jobs.queue import _advise_input, _run_post_analyze_pipeline
 from app.features.dashboard.router import _scan_mode_flags
-from app.features.ort.env_installer import detect_install_tasks
+from app.features.ort.env_installer import detect_install_tasks, install_environment
 from app.features.ort.executor import _build_ort_env, _ort_executable_candidates
 from app.features.ort.installer import (
     WINDOWS_TYPECODE_LIBMAGIC_VERSION,
@@ -132,6 +134,52 @@ def test_ort_env_uses_the_same_configured_java_home(tmp_path, monkeypatch):
     assert env["PATH"].split(os.pathsep)[0] == str(java21.resolve() / "bin")
 
 
+def test_ort_env_sets_configured_max_heap(monkeypatch):
+    monkeypatch.setattr(
+        ort_executor,
+        "settings",
+        replace(ort_executor.settings, ort_java_max_heap="12GB"),
+    )
+    monkeypatch.setenv("JAVA_OPTS", "-Dfile.encoding=UTF-8 -Xmx4g")
+
+    java_opts = _build_ort_env()["JAVA_OPTS"]
+
+    assert java_opts.endswith("-Xmx12g")
+    assert "-Dfile.encoding=UTF-8" in java_opts
+
+
+def test_analyze_environment_skips_duplicate_node_install(tmp_path, monkeypatch):
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    log_file = tmp_path / "install.log"
+    commands = []
+
+    async def fail_if_streamed(*args, **kwargs):
+        commands.append((args, kwargs))
+        return 0
+
+    monkeypatch.setattr(
+        "app.features.ort.env_installer._which",
+        lambda *_commands: "/usr/local/bin/npm",
+    )
+    monkeypatch.setattr(
+        "app.features.ort.env_installer._stream",
+        fail_if_streamed,
+    )
+
+    rc = asyncio.run(
+        install_environment(
+            "job-1",
+            str(tmp_path),
+            log_file,
+            node_tool_only=True,
+        )
+    )
+
+    assert rc == 0
+    assert commands == []
+    assert "project install skipped" in log_file.read_text(encoding="utf-8")
+
+
 def test_ort_executor_prefers_real_distribution_launcher():
     candidates = _ort_executable_candidates()
     assert candidates
@@ -161,6 +209,27 @@ def test_scan_modes_are_mutually_exclusive():
     assert _scan_mode_flags("vulnerability", "on", "on") == (True, False)
     assert _scan_mode_flags("license", "on", "on") == (False, True)
     assert _scan_mode_flags("full", None, None) == (True, True)
+
+
+def test_node_repo_config_excludes_generated_and_agent_worktrees(tmp_path):
+    project = tmp_path / "node-project"
+    project.mkdir()
+    (project / ".git").mkdir()
+    config_path = tmp_path / "node-repo-config.yml"
+
+    generate_repo_config("typescript", config_path, project_path=str(project))
+
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    patterns = {entry["pattern"] for entry in data["excludes"]["paths"]}
+    assert {
+        "**/node_modules/**",
+        "**/.next/**",
+        "**/.turbo/**",
+        "**/dist/**",
+        "**/out/**",
+        "**/.claude/worktrees/**",
+        "**/.codex/worktrees/**",
+    }.issubset(patterns)
 
 
 def test_libmagic_install_commands_for_macos_and_windows(monkeypatch):
@@ -519,6 +588,7 @@ def test_swift_pipeline_runs_scancode_and_advises_from_scan(tmp_path, monkeypatc
     )
     assert asyncio.run(_run_post_analyze_pipeline(job, tmp_path / "job.log")) == 0
     assert "--scanners ScanCode" in commands[0]
+    assert "--package-types" not in commands[0]
     assert f"-i {output_dir / 'scan-result.yml'}" in commands[1]
 
 
@@ -617,12 +687,13 @@ def test_scancode_only_pipeline_skips_osv_advisor(tmp_path, monkeypatch):
         job_id="job",
         command=f"ort analyze -i {tmp_path} -o {output_dir}",
         work_dir=str(tmp_path),
-        detected_language="swift",
+        detected_language="typescript",
         analysis_enabled=False,
         scancode_enabled=True,
     )
     assert asyncio.run(_run_post_analyze_pipeline(job, tmp_path / "job.log")) == 0
     assert any(" scan " in command for command in commands)
+    assert any("--package-types PROJECT" in command for command in commands)
     assert not any(" advise " in command for command in commands)
 
 
@@ -726,7 +797,11 @@ def test_trivy_swift_license_command_omits_security_severity(tmp_path, monkeypat
     assert len(calls) == 2
     security_tokens, license_tokens = calls
     assert security_tokens[security_tokens.index("--severity") + 1] == "HIGH,CRITICAL"
+    assert "**/.next" in security_tokens
+    assert "**/.claude/worktrees" in security_tokens
+    assert "**/node_modules" in security_tokens
     assert license_tokens[license_tokens.index("--scanners") + 1] == "license"
+    assert "**/.next" in license_tokens
     assert "--license-full" in license_tokens
     assert "--severity" not in license_tokens
     assert "--offline-scan" not in license_tokens
