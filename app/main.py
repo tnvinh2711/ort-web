@@ -12,6 +12,7 @@ from starlette.types import Scope
 from app.config import ensure_runtime_dirs, settings
 from app.features.jobs.queue import job_queue
 from app.features.jobs.store import job_store
+from app.features.ort.installer import maintain_ort_runtime_on_startup
 from app.features.routes import include_feature_routes
 
 
@@ -34,6 +35,18 @@ class CachedStaticFiles(StaticFiles):
 async def lifespan(_: FastAPI):
     ensure_runtime_dirs(settings)
     job_store.initialize()
+    maintenance_log = settings.runtime_dir / "startup-runtime-maintenance.log"
+    try:
+        await maintain_ort_runtime_on_startup(maintenance_log)
+    except Exception:
+        # Runtime maintenance must never make the Setup UI unreachable. The
+        # normal job precheck will still block ORT when Java is incompatible.
+        with maintenance_log.open("a", encoding="utf-8") as output:
+            output.write(
+                "[startup] Runtime maintenance failed unexpectedly; "
+                "continuing so the issue can be repaired from Setup.\n"
+            )
+            output.write(traceback.format_exc())
     await job_queue.start()
     try:
         yield

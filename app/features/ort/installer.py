@@ -19,6 +19,11 @@ from typing import Callable, Awaitable
 
 from app.config import settings
 from app.features.jobs.log_stream import log_stream_hub
+from app.features.ort.java_runtime import (
+    java_major_version,
+    ort_required_java,
+    resolve_java_home,
+)
 
 GITHUB_LATEST_RELEASE = "https://api.github.com/repos/oss-review-toolkit/ort/releases/latest"
 WINDOWS_TYPECODE_LIBMAGIC_VERSION = "5.39.210531"
@@ -26,6 +31,45 @@ WINDOWS_TYPECODE_LIBMAGIC_VERSION = "5.39.210531"
 
 class OrtInstallerError(RuntimeError):
     pass
+
+
+def _find_installed_ort_launcher() -> Path | None:
+    name = "ort.bat" if os.name == "nt" else "ort"
+    candidates = [
+        settings.ort_install_dir / ".ort-dist" / "current" / "bin" / name,
+        settings.bin_dir / ".ort-dist" / "current" / "bin" / name,
+        settings.ort_install_dir / name,
+        settings.bin_dir / name,
+    ]
+    if found := shutil.which(name):
+        candidates.append(Path(found))
+    return next((path for path in candidates if path.exists()), None)
+
+
+def _installed_ort_version(launcher: Path | None) -> str | None:
+    if not launcher:
+        return None
+    path = launcher.resolve()
+    homes = [
+        path.parent.parent,
+        launcher.parent / ".ort-dist" / "current",
+        path.parent / ".ort-dist" / "current",
+    ]
+    for home in homes:
+        for jar in (home / "lib").glob("cli-*.jar"):
+            match = re.fullmatch(r"cli-(\d+(?:\.\d+)+)\.jar", jar.name)
+            if match:
+                return match.group(1)
+    return None
+
+
+def _fetch_latest_release() -> dict:
+    request = urllib.request.Request(
+        GITHUB_LATEST_RELEASE,
+        headers={"User-Agent": "ort-web-runtime-maintenance"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -148,20 +192,17 @@ async def _ensure_libmagic(
 
 def _java_major_version(java_bin: str | Path) -> int | None:
     """Return Java major version number, or None if undetectable."""
-    try:
-        result = subprocess.run(
-            [str(java_bin), "-version"],
-            capture_output=True, text=True, timeout=15, check=False,
-        )
-        output = result.stderr + result.stdout
-        m = re.search(r'version "(\d+)', output)
-        return int(m.group(1)) if m else None
-    except Exception:
+    return java_major_version(java_bin)
+
+
+def _find_java_21_home(minimum_major: int = 21) -> Path | None:
+    """Search common locations for a Java 21+ home directory."""
+    compatible = resolve_java_home(os.environ, minimum_major)
+    if compatible:
+        return compatible
+    if minimum_major > 21:
         return None
 
-
-def _find_java_21_home() -> Path | None:
-    """Search common locations for a Java 21+ home directory."""
     system = platform.system()
 
     def _check(home: Path) -> Path | None:
@@ -433,6 +474,100 @@ async def _ensure_java_21(
     return java_home
 
 
+async def _ensure_java_version(
+    minimum_major: int,
+    log: Callable[[str], Awaitable[None]],
+) -> Path | None:
+    """Ensure a JDK compatible with the installed ORT build is available."""
+    home = await asyncio.to_thread(_find_java_21_home, minimum_major)
+    if home:
+        version = await asyncio.to_thread(_java_major_version, home / "bin" / _java_name_for_platform())
+        await log(f"Compatible Java {version} found at {home} (need {minimum_major}+).")
+        return home
+    if minimum_major <= 21:
+        return await _ensure_java_21(log)
+
+    await log(f"No Java {minimum_major}+ runtime found. Installing a compatible JDK...")
+    system = platform.system()
+
+    async def stream(*args: str) -> int:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            if line:
+                await log(line)
+        return await proc.wait()
+
+    if system == "Darwin":
+        brew = shutil.which("brew")
+        if not brew:
+            await log(f"Homebrew not found. Install JDK {minimum_major}+ manually.")
+            return None
+        # The unversioned formula tracks the newest supported OpenJDK and is
+        # therefore safer than assuming an openjdk@<major> formula exists.
+        if await stream(brew, "install", "openjdk") != 0:
+            await log(f"Could not install a Java {minimum_major}+ JDK with Homebrew.")
+            return None
+    elif system == "Linux":
+        attempts = [
+            (shutil.which("apt-get"), ["sudo", "apt-get", "install", "-y", f"openjdk-{minimum_major}-jdk"]),
+            (shutil.which("dnf"), ["sudo", "dnf", "install", "-y", f"java-{minimum_major}-openjdk-devel"]),
+            (shutil.which("yum"), ["sudo", "yum", "install", "-y", f"java-{minimum_major}-openjdk-devel"]),
+        ]
+        installed = False
+        for manager, command in attempts:
+            if manager and await stream(*command) == 0:
+                installed = True
+                break
+        if not installed:
+            await log(f"Could not auto-install Java {minimum_major}+ on Linux.")
+            return None
+    elif system == "Windows":
+        winget = shutil.which("winget")
+        if not winget:
+            await log(f"winget not found. Install JDK {minimum_major}+ manually.")
+            return None
+        installed = False
+        for package_id in (
+            f"Microsoft.OpenJDK.{minimum_major}",
+            f"EclipseAdoptium.Temurin.{minimum_major}.JDK",
+        ):
+            if await stream(
+                winget,
+                "install",
+                "--id",
+                package_id,
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ) == 0:
+                installed = True
+                break
+        if not installed:
+            await log(f"Could not auto-install Java {minimum_major}+ on Windows.")
+            return None
+    else:
+        await log(f"Auto-installing Java is not supported on {system}.")
+        return None
+
+    home = await asyncio.to_thread(_find_java_21_home, minimum_major)
+    if home:
+        await log(f"Java {minimum_major}+ installed at {home}.")
+    else:
+        await log("JDK installation completed but no compatible JAVA_HOME was found.")
+    return home
+
+
+def _java_name_for_platform() -> str:
+    return "java.exe" if os.name == "nt" else "java"
+
+
 # ---------------------------------------------------------------------------
 # ORT archive helpers
 # ---------------------------------------------------------------------------
@@ -568,9 +703,10 @@ def _verify_ort_runtime(launcher: Path, java_home: Path | None = None) -> None:
 
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     if "UnsupportedClassVersionError" in output:
+        required_java = ort_required_java(launcher)
         raise OrtInstallerError(
-            "ORT requires Java 21+. Java auto-install may have failed — "
-            "please install JDK 21+ manually and set JAVA_HOME."
+            f"ORT requires Java {required_java}+. Java auto-install may have failed — "
+            f"please install JDK {required_java}+ manually and set JAVA_HOME."
         )
 
     raise OrtInstallerError(f"ORT launcher verification failed: {output.strip()[:600]}")
@@ -604,8 +740,8 @@ async def install_ort_local(
         await log("Starting ORT local install...")
         await log(f"Detected platform: {platform.system()}")
 
-        # --- Step 1: Ensure Java 21+ ---
-        await log("--- Step 1: Checking Java ---")
+        # --- Step 1: Ensure the baseline Java runtime ---
+        await log("--- Step 1: Checking baseline Java ---")
         java_home = await _ensure_java_21(log)
 
         # --- Step 2: Ensure ScanCode's native libmagic dependency ---
@@ -637,11 +773,7 @@ async def install_ort_local(
         # --- Step 4: Fetch latest ORT release ---
         await log("--- Step 4: Fetching ORT release info ---")
 
-        def _fetch_release() -> dict:
-            with urllib.request.urlopen(GITHUB_LATEST_RELEASE, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-
-        release = await asyncio.to_thread(_fetch_release)
+        release = await asyncio.to_thread(_fetch_latest_release)
         assets = release.get("assets", [])
         asset = _select_asset(assets)
         download_url = asset["browser_download_url"]
@@ -688,9 +820,23 @@ async def install_ort_local(
             await log("--- Step 6: Extracting archive ---")
             await asyncio.to_thread(_extract_archive, archive_path, extract_dir)
 
-            await log("--- Step 7: Deploying ORT ---")
             source_bin = await asyncio.to_thread(_find_bin_dir, extract_dir)
             source_root = source_bin.parent
+            required_java = await asyncio.to_thread(
+                ort_required_java,
+                source_bin / ("ort.bat" if os.name == "nt" else "ort"),
+            )
+            await log(
+                f"Selected ORT build requires Java {required_java}+ "
+                "(derived from its class files)."
+            )
+            java_home = await _ensure_java_version(required_java, log)
+            if not java_home:
+                raise OrtInstallerError(
+                    f"ORT requires Java {required_java}+, but no compatible JDK is available."
+                )
+
+            await log("--- Step 7: Deploying ORT ---")
             await log(f"Deploying to: {target_dir / '.ort-dist' / 'current'}")
             launcher, install_home = await asyncio.to_thread(
                 _deploy_distribution, source_root, target_dir, java_home
@@ -713,3 +859,70 @@ async def install_ort_local(
     except Exception as exc:
         await log(f"[error] ORT install failed: {exc}")
         return 1, ort_path
+
+
+async def maintain_ort_runtime_on_startup(log_file: Path) -> None:
+    """Check for an ORT update and select/install the Java it actually needs."""
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    async def log(message: str) -> None:
+        with log_file.open("a", encoding="utf-8") as output:
+            output.write(f"{message.rstrip()}\n")
+
+    await log("[startup] Checking ORT and Java runtime compatibility...")
+    launcher = await asyncio.to_thread(_find_installed_ort_launcher)
+    current_version = await asyncio.to_thread(_installed_ort_version, launcher)
+    latest_version: str | None = None
+
+    if os.environ.get("ORT_WEB_AUTO_UPDATE", "1").strip() != "0":
+        try:
+            release = await asyncio.to_thread(_fetch_latest_release)
+            latest_version = str(release.get("tag_name") or "").lstrip("v") or None
+            await log(
+                f"[startup] ORT installed={current_version or 'unknown'}, "
+                f"latest={latest_version or 'unknown'}."
+            )
+        except Exception as exc:
+            await log(f"[startup] ORT update check skipped: {exc}")
+
+    needs_install = launcher is None or (
+        latest_version is not None and current_version != latest_version
+    )
+    if needs_install:
+        reason = "not installed" if launcher is None else "update available"
+        await log(f"[startup] ORT {reason}; installing the latest compatible release...")
+        exit_code, installed_path = await install_ort_local(
+            "startup-runtime-maintenance",
+            log_file,
+        )
+        if exit_code == 0 and installed_path:
+            launcher = Path(installed_path)
+            current_version = await asyncio.to_thread(_installed_ort_version, launcher)
+        else:
+            await log(
+                "[startup] ORT update failed; preserving the existing installation "
+                "and checking whether it can still run."
+            )
+
+    if not launcher:
+        await log("[startup] ORT is unavailable. Use Setup to install it.")
+        return
+
+    required_java = await asyncio.to_thread(ort_required_java, launcher)
+    java_home = await _ensure_java_version(required_java, log)
+    if not java_home:
+        await log(
+            f"[startup] No Java {required_java}+ runtime is available; "
+            "ORT jobs will be blocked by precheck."
+        )
+        return
+
+    # Make the compatible selection authoritative for all later prechecks and
+    # job subprocesses in this web-server process, regardless of a stale
+    # inherited JAVA_HOME.
+    os.environ["ORT_WEB_JAVA_HOME"] = str(java_home)
+    await log(
+        f"[startup] Ready: ORT {current_version or 'unknown'}, "
+        f"Java {java_major_version(java_home / 'bin' / _java_name_for_platform())} "
+        f"at {java_home} (requires {required_java}+)."
+    )

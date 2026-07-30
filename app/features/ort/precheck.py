@@ -12,7 +12,11 @@ from typing import Optional
 from app.config import settings
 from app.features.jobs.event_contract import EVENT_LOG, make_event
 from app.features.jobs.log_stream import log_stream_hub
-from app.features.ort.java_runtime import apply_java_runtime
+from app.features.ort.java_runtime import (
+    apply_java_runtime,
+    java_major_version,
+    ort_required_java,
+)
 
 
 async def _log(job_id: str, log_file: Path, line: str) -> None:
@@ -38,10 +42,12 @@ def _find_ort_binary() -> Optional[str]:
     return found
 
 
-def _check_java() -> tuple[bool, Optional[str], Optional[str]]:
+def _check_java(
+    minimum_major: int = 21,
+) -> tuple[bool, Optional[str], Optional[str]]:
     """Return (available, version_line, java_home) for ORT's selected runtime."""
     env = os.environ.copy()
-    java_home = apply_java_runtime(env)
+    java_home = apply_java_runtime(env, minimum_major)
     if not java_home:
         return False, None, None
     java = java_home / "bin" / ("java.exe" if os.name == "nt" else "java")
@@ -53,9 +59,14 @@ def _check_java() -> tuple[bool, Optional[str], Optional[str]]:
         )
         # `java -version` writes to stderr on most JDKs
         out = (result.stderr or result.stdout or "").strip().splitlines()
-        return True, out[0] if out else "version unknown", str(java_home)
+        major = java_major_version(java)
+        return (
+            result.returncode == 0 and (major or 0) >= minimum_major,
+            out[0] if out else "version unknown",
+            str(java_home),
+        )
     except Exception:
-        return True, None, str(java_home)
+        return False, None, str(java_home)
 
 
 def _find_tool(detect_commands: list[str]) -> Optional[str]:
@@ -250,19 +261,21 @@ async def run_environment_precheck(
         critical_ok = False
 
     # 2. Java
-    java_found, java_version, java_home = _check_java()
+    required_java = ort_required_java(ort_path)
+    java_found, java_version, java_home = _check_java(required_java)
     if java_found:
         await _log(
             job_id,
             log_file,
             f"[precheck] OK   Java: {java_version or 'version unknown'} "
-            f"(JAVA_HOME: {java_home})\n",
+            f"(JAVA_HOME: {java_home}, ORT requires Java {required_java}+)\n",
         )
     else:
         await _log(
             job_id, log_file,
-            "[precheck] FAIL Java not found in PATH. "
-            "ORT requires Java 21+. Install a JDK and ensure it is in PATH.\n",
+            f"[precheck] FAIL No compatible Java runtime found. "
+            f"This ORT build requires Java {required_java}+. "
+            "Install a compatible JDK or relaunch the web app to run maintenance.\n",
         )
         critical_ok = False
 

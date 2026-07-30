@@ -236,7 +236,18 @@ Gradle wrapper distributions, Tooling API downloads, and dependencies are cached
 
 ### Java runtime
 
-The pre-flight check and ORT use the same Java runtime. Selection order is `ORT_WEB_JAVA_HOME`, a valid `JAVA_HOME`, then `java` on `PATH`. Set `ORT_WEB_JAVA_HOME` when OSS Guard must use a specific JDK without changing the rest of the machine. Java 21 LTS is preferred during automatic installation.
+On every web-server launch, OSS Guard checks GitHub for the latest ORT release
+and verifies the Java runtime required by that exact build. The requirement is
+read directly from ORT's compiled class files, so a release built for Java 25
+will not accidentally run with Java 21. A compatible installed JDK is selected
+automatically; if none is available, the app attempts to install one before
+accepting jobs. Set `ORT_WEB_AUTO_UPDATE=0` to disable automatic ORT release
+updates.
+
+The pre-flight check and ORT use the same compatible Java runtime. Selection
+order is a compatible `ORT_WEB_JAVA_HOME`, a compatible `JAVA_HOME`, a
+compatible `java` on `PATH`, then other installed JDKs. An outdated
+`JAVA_HOME` is ignored when the selected ORT build requires a newer Java.
 
 ORT runs with a 12 GiB maximum heap by default because large npm dependency
 graphs can exceed the JVM's automatically selected heap. Override it with

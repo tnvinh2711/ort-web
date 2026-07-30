@@ -93,12 +93,19 @@ async def api_save_vertex_config(request: Request) -> JSONResponse:
 
 # ── Environment status ─────────────────────────────────────────────────────────
 
-def _check_java_ok() -> tuple[bool, str | None]:
-    from app.features.ort.installer import _find_java_21_home
-    home = _find_java_21_home()
+def _check_java_ok() -> tuple[bool, str | None, int]:
+    from app.features.ort.installer import (
+        _find_installed_ort_launcher,
+        _find_java_21_home,
+    )
+    from app.features.ort.java_runtime import ort_required_java
+
+    launcher = _find_installed_ort_launcher()
+    required_java = ort_required_java(launcher)
+    home = _find_java_21_home(required_java)
     if home:
-        return True, str(home)
-    return False, None
+        return True, str(home), required_java
+    return False, None, required_java
 
 
 def _check_ort_ok() -> tuple[bool, str | None]:
@@ -124,13 +131,14 @@ def _check_trivy_db_ok() -> bool:
 
 @router.get("/api/env-status")
 async def api_env_status() -> JSONResponse:
-    java_ok, java_path = await asyncio.to_thread(_check_java_ok)
+    java_ok, java_path, java_required = await asyncio.to_thread(_check_java_ok)
     ort_ok, ort_path = await asyncio.to_thread(_check_ort_ok)
     trivy_ok, trivy_path = await asyncio.to_thread(_check_trivy_ok)
     trivy_db_ok = await asyncio.to_thread(_check_trivy_db_ok)
     return JSONResponse({
         "java_ok": java_ok,
         "java_path": java_path,
+        "java_required": java_required,
         "ort_ok": ort_ok,
         "ort_path": ort_path,
         "trivy_ok": trivy_ok,
@@ -186,8 +194,34 @@ async def _run_install(session_id: str, tool: str) -> None:
 
     try:
         if tool == "java":
-            from app.features.ort.installer import _ensure_java_21
-            await _ensure_java_21(log)
+            from app.features.ort.installer import (
+                _ensure_java_version,
+                _find_installed_ort_launcher,
+            )
+            from app.features.ort.java_runtime import ort_required_java
+
+            required_java = ort_required_java(_find_installed_ort_launcher())
+            java_home = await _ensure_java_version(
+                required_java,
+                log,
+            )
+            if not java_home:
+                await log_stream_hub.publish(
+                    session_id,
+                    {
+                        "type": "error",
+                        "message": (
+                            f"Java {required_java}+ installation failed or the "
+                            "installed JDK could not be detected."
+                        ),
+                    },
+                )
+                return
+
+            # Make the newly selected JDK available to jobs immediately,
+            # without requiring another web-server restart.
+            os.environ["ORT_WEB_JAVA_HOME"] = str(java_home)
+            await log(f"Java {required_java}+ is ready at {java_home}.\n")
 
         elif tool == "ort":
             # install_ort_local publishes to log_stream_hub(session_id) internally

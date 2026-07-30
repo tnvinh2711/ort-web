@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
+import struct
 import sys
+import zipfile
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,7 @@ import app.features.trivy.scanner as trivy_scanner
 import app.features.ort.installer as ort_installer
 import app.features.ort.executor as ort_executor
 import app.features.ort.java_runtime as java_runtime
+import app.features.setup.router as setup_router
 from app.config import Settings
 from app.models import Job
 from app.features.jobs.store import JobStore
@@ -26,7 +29,11 @@ from app.features.ort.installer import (
     _ensure_libmagic,
     _libmagic_install_command,
 )
-from app.features.ort.java_runtime import apply_java_runtime, resolve_java_home
+from app.features.ort.java_runtime import (
+    apply_java_runtime,
+    ort_required_java,
+    resolve_java_home,
+)
 from app.features.ort.config import (
     _get_swift_unresolvable_definition_file_excludes,
     generate_repo_config,
@@ -111,16 +118,151 @@ def test_macos_java_stub_resolves_real_jdk_home(tmp_path, monkeypatch):
     java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
     monkeypatch.setattr(java_runtime.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(java_runtime.shutil, "which", lambda *_args, **_kwargs: "/usr/bin/java")
+    def fake_run(command, **_kwargs):
+        if command[0] == "/usr/libexec/java_home":
+            return SimpleNamespace(returncode=0, stdout=str(java21), stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="",
+            stderr='openjdk version "21.0.10"',
+        )
+
     monkeypatch.setattr(
         java_runtime.subprocess,
         "run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            returncode=0,
-            stdout=str(java21),
-        ),
+        fake_run,
     )
 
     assert resolve_java_home({"PATH": "/usr/bin"}) == java21.resolve()
+
+
+def test_java_resolver_skips_incompatible_java_home(tmp_path):
+    java21 = _fake_java_home(tmp_path / "jdk-21", "21.0.10")
+    java26 = _fake_java_home(tmp_path / "jdk-26", "26.0.1")
+
+    resolved = resolve_java_home(
+        {
+            "JAVA_HOME": str(java21),
+            "PATH": str(java26 / "bin"),
+        },
+        minimum_major=25,
+    )
+
+    assert resolved == java26.resolve()
+
+
+def test_ort_required_java_is_derived_from_class_version(tmp_path):
+    ort_home = tmp_path / "ort-home"
+    launcher = ort_home / "bin" / "ort"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    lib = ort_home / "lib"
+    lib.mkdir()
+    class_header = b"\xca\xfe\xba\xbe" + struct.pack(">HH", 0, 69)
+    with zipfile.ZipFile(lib / "cli-91.1.0.jar", "w") as archive:
+        archive.writestr(
+            "org/ossreviewtoolkit/cli/OrtMainKt.class",
+            class_header,
+        )
+
+    assert ort_required_java(launcher) == 25
+
+
+def test_startup_maintenance_selects_java_required_by_ort(tmp_path, monkeypatch):
+    launcher = tmp_path / "ort"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    java26 = _fake_java_home(tmp_path / "jdk-26", "26.0.1")
+    log_file = tmp_path / "startup.log"
+
+    monkeypatch.delenv("ORT_WEB_JAVA_HOME", raising=False)
+    monkeypatch.setattr(
+        ort_installer,
+        "_find_installed_ort_launcher",
+        lambda: launcher,
+    )
+    monkeypatch.setattr(
+        ort_installer,
+        "_installed_ort_version",
+        lambda _launcher: "91.1.0",
+    )
+    monkeypatch.setattr(
+        ort_installer,
+        "_fetch_latest_release",
+        lambda: {"tag_name": "91.1.0"},
+    )
+    monkeypatch.setattr(ort_installer, "ort_required_java", lambda _launcher: 25)
+
+    async def fake_ensure(minimum_major, _log):
+        assert minimum_major == 25
+        return java26
+
+    monkeypatch.setattr(ort_installer, "_ensure_java_version", fake_ensure)
+
+    asyncio.run(ort_installer.maintain_ort_runtime_on_startup(log_file))
+
+    assert os.environ["ORT_WEB_JAVA_HOME"] == str(java26)
+    assert "requires 25+" in log_file.read_text(encoding="utf-8")
+
+
+def test_setup_java_install_reports_failure_instead_of_false_success(monkeypatch):
+    events = []
+
+    async def no_delay(_seconds):
+        return None
+
+    async def cannot_install(minimum_major, _log):
+        assert minimum_major == 25
+        return None
+
+    async def capture(_session_id, event):
+        events.append(event)
+
+    monkeypatch.setattr(setup_router.asyncio, "sleep", no_delay)
+    monkeypatch.setattr(
+        ort_installer,
+        "_find_installed_ort_launcher",
+        lambda: Path("/tmp/ort"),
+    )
+    monkeypatch.setattr(ort_installer, "_ensure_java_version", cannot_install)
+    monkeypatch.setattr(java_runtime, "ort_required_java", lambda _launcher: 25)
+    monkeypatch.setattr(setup_router.log_stream_hub, "publish", capture)
+
+    asyncio.run(setup_router._run_install("setup-test", "java"))
+
+    assert any(event["type"] == "error" for event in events)
+    assert not any(event["type"] == "done" for event in events)
+    assert "Java 25+" in events[-1]["message"]
+
+
+def test_setup_java_install_is_available_immediately(tmp_path, monkeypatch):
+    java25 = _fake_java_home(tmp_path / "jdk-25", "25.0.1")
+    events = []
+
+    async def no_delay(_seconds):
+        return None
+
+    async def install(minimum_major, _log):
+        assert minimum_major == 25
+        return java25
+
+    async def capture(_session_id, event):
+        events.append(event)
+
+    monkeypatch.delenv("ORT_WEB_JAVA_HOME", raising=False)
+    monkeypatch.setattr(setup_router.asyncio, "sleep", no_delay)
+    monkeypatch.setattr(
+        ort_installer,
+        "_find_installed_ort_launcher",
+        lambda: Path("/tmp/ort"),
+    )
+    monkeypatch.setattr(ort_installer, "_ensure_java_version", install)
+    monkeypatch.setattr(java_runtime, "ort_required_java", lambda _launcher: 25)
+    monkeypatch.setattr(setup_router.log_stream_hub, "publish", capture)
+
+    asyncio.run(setup_router._run_install("setup-test", "java"))
+
+    assert os.environ["ORT_WEB_JAVA_HOME"] == str(java25)
+    assert events[-1]["type"] == "done"
 
 
 def test_ort_env_uses_the_same_configured_java_home(tmp_path, monkeypatch):

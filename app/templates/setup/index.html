@@ -106,7 +106,14 @@
     if (!_env) return;
 
     var rows = [
-      { key: 'java',     label: 'Java 21',  ok: _env.java_ok,     path: _env.java_path,  installLabel: 'Install' },
+      {
+        key: 'java',
+        label: 'Java ' + (_env.java_required || 21) + '+ for ORT',
+        ok: _env.java_ok,
+        path: _env.java_path,
+        installLabel: 'Install / Update',
+        missingText: 'Not installed or incompatible (requires Java ' + (_env.java_required || 21) + '+)'
+      },
       { key: 'ort',      label: 'ORT',      ok: _env.ort_ok,      path: _env.ort_path,   installLabel: 'Install' },
       { key: 'trivy',    label: 'Trivy',    ok: _env.trivy_ok,    path: _env.trivy_path, installLabel: 'Install' },
       { key: 'trivy_db', label: 'Trivy DB', ok: _env.trivy_db_ok, path: null,            installLabel: 'Download DB', hidden: !_env.trivy_ok },
@@ -120,7 +127,9 @@
     rows.forEach(function(row) {
       if (row.hidden) return;
       var st = _state[row.key];
-      var isOk = row.ok || st.phase === 'done';
+      // The server status is authoritative. A completed installer is not
+      // considered successful until the refreshed status detects the tool.
+      var isOk = row.ok;
       var isRunning = st.phase === 'running';
       var isError = st.phase === 'error';
 
@@ -132,7 +141,8 @@
         pathHtml = '<span style="font-size:12px; color:var(--muted); font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:340px; display:inline-block;">'
           + esc(row.path || 'Ready') + '</span>';
       } else if (!isRunning) {
-        pathHtml = '<span style="font-size:12px; color:var(--muted); font-style:italic;">Not installed</span>';
+        pathHtml = '<span style="font-size:12px; color:var(--muted); font-style:italic;">'
+          + esc(row.missingText || 'Not installed') + '</span>';
       }
 
       var btnHtml = '';
@@ -147,7 +157,7 @@
       html += '<div style="border-bottom:1px solid var(--line);">';
       html += '<div style="display:flex; align-items:center; gap:10px; padding:10px 4px;">';
       html += '<span style="color:' + iconColor + '; font-size:16px; width:20px; text-align:center; flex-shrink:0; font-weight:bold;">' + iconChar + '</span>';
-      html += '<span style="font-weight:600; font-size:14px; width:90px; flex-shrink:0;">' + esc(row.label) + '</span>';
+      html += '<span style="font-weight:600; font-size:14px; width:130px; flex-shrink:0;">' + esc(row.label) + '</span>';
       html += '<span style="flex:1; min-width:0;">' + pathHtml + '</span>';
       html += '<span style="flex-shrink:0;">' + btnHtml + '</span>';
       html += '</div>';

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from app.config import settings
-from app.features.ort.java_runtime import apply_java_runtime
+from app.features.ort.java_runtime import apply_java_runtime, ort_required_java
 from app.features.jobs.log_stream import log_stream_hub
 
 
@@ -84,7 +84,7 @@ def _java_heap_option(value: str) -> str:
     return f"-Xmx{normalized}"
 
 
-def _build_ort_env() -> dict[str, str]:
+def _build_ort_env(ort_launcher: str | Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault("LC_ALL", "en_US.UTF-8")
     # The ORT launcher consumes JAVA_OPTS. Append our value so it wins over an
@@ -112,7 +112,7 @@ def _build_ort_env() -> dict[str, str]:
     if venv_bin.is_dir():
         extra_paths.append(str(venv_bin))
     env["PATH"] = os.pathsep.join(extra_paths) + os.pathsep + env.get("PATH", "")
-    apply_java_runtime(env)
+    apply_java_runtime(env, ort_required_java(ort_launcher))
     return env
 
 
@@ -163,8 +163,6 @@ async def run_ort_command(
     tokens = _validate_command(command)
     tokens = _ensure_force_overwrite(tokens)
 
-    env = _build_ort_env()
-
     # Resolve the ORT launcher to a full path so we never accidentally exec a
     # stale system binary (e.g. an x86_64 Homebrew ort on Apple Silicon) and
     # so installs that fell back to ~/.local/bin are found even when that
@@ -173,6 +171,7 @@ async def run_ort_command(
         (str(candidate) for candidate in _ort_executable_candidates() if candidate.exists()),
         "ort",  # fallback: let the OS resolve via PATH
     )
+    env = _build_ort_env(executable)
 
     if tokens[0] == "ort":
         tokens[0] = executable
